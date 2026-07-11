@@ -155,9 +155,29 @@ class _HomePageState extends State<HomePage> {
     final out = path.toLowerCase().endsWith('.csv') ? path : '$path.csv';
     try {
       CsvImport.exportToFile(out, accounts);
+      // "Save As" semantics: the exported file becomes the active working file
+      // so edits keep saving there and the footer's "Reveal in Finder" button
+      // points at the exported folder.
+      setState(() => _csvPath = out);
+      AppPaths.lastCsvPath = out;
       _snack('Exported ${accounts.length} account(s) to ${out.split('/').last}.');
     } catch (e) {
       _snack('Export failed: $e', error: true);
+    }
+  }
+
+  /// Open Finder at the given file (selecting it) or, if it doesn't exist yet,
+  /// at the app's data folder. Used by the footer "Reveal in Finder" button.
+  Future<void> _revealInFinder() async {
+    final path = _csvPath;
+    try {
+      if (path != null && File(path).existsSync()) {
+        await Process.run('open', ['-R', path]);
+      } else {
+        await Process.run('open', [AppPaths.dataDir]);
+      }
+    } catch (e) {
+      _snack('Could not open Finder: $e', error: true);
     }
   }
 
@@ -642,6 +662,21 @@ class _HomePageState extends State<HomePage> {
               child: Text(_csvPath ?? 'unsaved — use Export to choose a file',
                   style: AppTheme.bodySmall, overflow: TextOverflow.ellipsis),
             ),
+            const SizedBox(width: 8),
+            TextButton.icon(
+              onPressed: _revealInFinder,
+              icon: const Icon(Icons.folder_open_rounded,
+                  size: 15, color: AppTheme.tertiary),
+              label: const Text('Reveal in Finder'),
+              style: TextButton.styleFrom(
+                textStyle: AppTheme.bodySmall,
+                foregroundColor: AppTheme.secondaryText,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            const SizedBox(width: 12),
             Text('${filtered.length}/$total shown', style: AppTheme.bodySmall),
           ]),
         ),
