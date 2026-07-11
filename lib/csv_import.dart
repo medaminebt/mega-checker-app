@@ -44,8 +44,7 @@ class CsvImport {
     // Strip a UTF-8 BOM (Excel / Numbers add one) so the first header matches.
     if (normalised.startsWith('﻿')) normalised = normalised.substring(1);
 
-    final rows = const CsvToListConverter(eol: '\n', shouldParseNumbers: false)
-        .convert(normalised);
+    final rows = Csv(fieldDelimiter: ',', autoDetect: false).decode(normalised);
     if (rows.isEmpty) return [];
 
     final header =
@@ -79,7 +78,7 @@ class CsvImport {
       ['email', 'password', 'notes'],
       for (final r in rows) [r.email, r.password, r.notes],
     ];
-    return const ListToCsvConverter(eol: '\n').convert(data);
+    return Csv(lineDelimiter: '\n').encode(data);
   }
 
   /// Write the current table (with updated notes) back to a CSV file.

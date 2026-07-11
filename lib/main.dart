@@ -610,7 +610,7 @@ class _HomePageState extends State<HomePage> {
                                 style: AppTheme.bodySmall))
                         : ListView.separated(
                             itemCount: filtered.length,
-                            separatorBuilder: (_, __) => const Divider(
+                            separatorBuilder: (_, _) => const Divider(
                                 height: 1, color: AppTheme.alternate),
                             itemBuilder: (context, i) {
                               final a = filtered[i];

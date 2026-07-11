@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.6.2
+  sdk: ^3.12.0
 
 dependencies:
   flutter:
@@ -12,14 +12,12 @@ dependencies:
   cupertino_icons: ^1.0.8
 
   # Pure-Dart only (no native code) so no CocoaPods is required to build.
-  encrypt: ^5.0.3        # AES-256-GCM
-  pointycastle: ^3.9.1   # PBKDF2 key derivation from the master password
-  csv: ^6.0.0            # robust CSV parsing (handles quoted fields)
+  csv: ^8.0.0            # robust CSV parsing (handles quoted fields)
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
