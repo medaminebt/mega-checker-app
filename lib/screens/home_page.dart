@@ -450,6 +450,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _signOut() async {
     if (_running) return;
+    if (!await confirmSignOut(context, email: widget.userEmail)) return;
     await _flush();
     await widget.onSignOut?.call();
   }

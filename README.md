@@ -186,6 +186,7 @@ What each check stores in Supabase:
 | Every MEGA check fails *MEGAcmd not installed* | `brew install --cask megacmd`, open MEGAcmd once, restart the app. |
 | Login OK but storage shows "—" | Run `mega-login you@x.com 'pw' && mega-df; mega-logout` in Terminal to see what MEGAcmd prints. |
 | App won't open on another Mac | **System Settings → Privacy & Security → Open Anyway**. |
+| The `.app` shows a blank / generic icon in Finder | Finder is showing a cached icon (the app itself has it). Rebuild with `./build.sh`, which refreshes it, or run `touch build/macos/Build/Products/Release/mega-checker-app.app && killall Finder`. Still blank? `sudo rm -rf /Library/Caches/com.apple.iconservices.store && killall Dock Finder`. |
 | Start over locally (forget URL/key/session) | macOS: `defaults delete com.megakeepalive.megaKeepalive`. Windows: delete `%APPDATA%\com.megakeepalive\mega-checker-app\`. Web: clear the site's data in the browser. |
 | Windows or web problems | See [BUILD.md](BUILD.md). |
 

@@ -553,3 +553,37 @@ Future<bool> confirmDelete(BuildContext context, Account a) async {
   );
   return ok == true;
 }
+
+// ---------------------------------------------------------------------------
+// Confirm sign out
+// ---------------------------------------------------------------------------
+
+Future<bool> confirmSignOut(BuildContext context, {String? email}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => MegaDialog(
+      icon: Icons.logout_rounded,
+      title: 'Sign out?',
+      width: 440,
+      actions: [
+        OutlinedButton(
+          style: AppTheme.ghostButton,
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton.icon(
+          onPressed: () => Navigator.pop(ctx, true),
+          icon: const Icon(Icons.logout_rounded, size: 18),
+          label: const Text('Sign out'),
+        ),
+      ],
+      child: Text(
+        'You\'ll need ${email == null ? 'your Supabase email' : '“$email”'} '
+        'and its password to sign in again. Your MEGA accounts stay saved in '
+        'Supabase.',
+        style: AppTheme.bodySecondary,
+      ),
+    ),
+  );
+  return ok == true;
+}

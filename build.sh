@@ -11,6 +11,14 @@ flutter build macos --release
 
 NAME="mega-checker-app.app"
 APP="build/macos/Build/Products/Release/$NAME"
+
+# Rebuilding replaces the files inside the bundle but not the bundle folder's
+# own date, and Finder caches app icons by path + date — so it would keep
+# showing a stale (blank) icon. Bump the date and re-register the app.
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+touch "$APP"
+"$LSREGISTER" -f "$PWD/$APP" || true
+
 echo
 echo "Built: $PWD/$APP"
 

@@ -234,10 +234,45 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 900)); // save starts
     await tester.tap(find.byTooltip('Sign out'));
+    await tester.pump(const Duration(milliseconds: 300)); // dialog opens
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Sign out'));
     await tester.pump(const Duration(seconds: 3)); // slow save finishes
     await tester.pumpAndSettle();
 
     expect(repo.log, ['update mega_key', 'signed out']);
+  });
+
+  testWidgets('Sign out asks "are you sure?"; Cancel keeps you signed in', (
+    tester,
+  ) async {
+    var signedOut = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.theme(),
+        home: HomePage(
+          repository: MemoryAccountsRepository(),
+          userEmail: 'me@example.com',
+          onSignOut: () async => signedOut = true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Sign out'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out?'), findsOneWidget);
+    expect(find.textContaining('me@example.com'), findsWidgets);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign out?'), findsNothing);
+    expect(signedOut, isFalse);
+
+    await tester.tap(find.byTooltip('Sign out'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Sign out'));
+    await tester.pumpAndSettle();
+    expect(signedOut, isTrue);
   });
 
   List<String> shownEmails(WidgetTester tester) => tester
