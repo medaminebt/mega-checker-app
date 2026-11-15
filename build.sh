@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the release app:  build/macos/Build/Products/Release/mega_keepalive.app
+# Build the release app:  build/macos/Build/Products/Release/mega-checker-app.app
 #
 #   ./build.sh            build only
 #   ./build.sh --install  build, then copy it to /Applications
@@ -9,14 +9,16 @@ cd "$(dirname "$0")"
 flutter pub get
 flutter build macos --release
 
-APP="build/macos/Build/Products/Release/mega_keepalive.app"
+NAME="mega-checker-app.app"
+APP="build/macos/Build/Products/Release/$NAME"
 echo
 echo "Built: $PWD/$APP"
 
 if [[ "${1:-}" == "--install" ]]; then
-  rm -rf "/Applications/mega_keepalive.app"
-  ditto "$APP" "/Applications/mega_keepalive.app"
-  echo "Installed: /Applications/mega_keepalive.app  (open it from Launchpad / Spotlight)"
+  # Also remove the copy installed under the app's old name.
+  rm -rf "/Applications/mega_keepalive.app" "/Applications/$NAME"
+  ditto "$APP" "/Applications/$NAME"
+  echo "Installed: /Applications/$NAME  (open it from Launchpad / Spotlight)"
 else
   echo "Open it with:  open \"$APP\""
   echo "Install it with:  ./build.sh --install"

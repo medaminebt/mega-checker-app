@@ -81,7 +81,7 @@ fast. While it runs, press `r` in the terminal for hot reload and `q` to quit.
 The app is created at:
 
 ```
-build/macos/Build/Products/Release/mega_keepalive.app
+build/macos/Build/Products/Release/mega-checker-app.app
 ```
 
 It's built for **Apple Silicon** (M1–M4 MacBooks). Xcode 27's `lipo` breaks
@@ -97,7 +97,7 @@ any other app):
 ./build.sh --install    # builds, then copies it to /Applications
 ```
 
-…or drag `mega_keepalive.app` from Finder into **Applications** yourself.
+…or drag `mega-checker-app.app` from Finder into **Applications** yourself.
 
 **Opening it the first time.** An app you built on the same Mac opens
 normally. If you copy it to **another** Mac (AirDrop, USB, download), macOS
@@ -107,7 +107,7 @@ file:
 
 ```sh
 cd build/macos/Build/Products/Release
-ditto -c -k --keepParent mega_keepalive.app MEGA-KeepAlive.zip
+ditto -c -k --keepParent mega-checker-app.app mega-checker-app.zip
 ```
 
 MEGAcmd must be installed on any Mac that runs the app. The Supabase URL/key
