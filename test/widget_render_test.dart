@@ -32,6 +32,7 @@ void main() {
   });
   tearDown(() {
     MegaService.overrideKeepAlive = null;
+    MegaService.debugSupported = null;
     Links.overrideOpen = null;
     TestWidgetsFlutterBinding.ensureInitialized()
         .platformDispatcher
@@ -273,6 +274,37 @@ void main() {
     await tester.tap(find.widgetWithText(ElevatedButton, 'Sign out'));
     await tester.pumpAndSettle();
     expect(signedOut, isTrue);
+  });
+
+  testWidgets('web build: check buttons are disabled and say why', (
+    tester,
+  ) async {
+    MegaService.debugSupported = false; // what the browser build reports
+    await tester.pumpWidget(
+      _app(
+        MemoryAccountsRepository([
+          Account(email: 'a@x.com', password: 'p', lastStatus: 'failed'),
+        ]),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    ButtonStyleButton button(String label) => tester.widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.textContaining(label),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      ),
+    );
+    expect(button('Check all accounts').onPressed, isNull);
+    expect(button('Recheck failed').onPressed, isNull);
+    final play = find.ancestor(
+      of: find.byIcon(Icons.play_arrow_rounded).last,
+      matching: find.byType(IconButton),
+    );
+    expect(tester.widget<IconButton>(play).onPressed, isNull);
+    expect(find.textContaining('This browser version'), findsOneWidget);
+    // Managing the list still works.
+    expect(button('Add account').onPressed, isNotNull);
   });
 
   List<String> shownEmails(WidgetTester tester) => tester

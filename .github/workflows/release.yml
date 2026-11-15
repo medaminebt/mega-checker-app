@@ -1,0 +1,140 @@
+# Builds the downloads for a GitHub release and attaches them to it:
+#
+#   mega-checker-app-macos.dmg / -macos.zip   macOS app (Apple Silicon)
+#   mega-checker-app-windows-x64.zip          Windows app folder
+#   mega-checker-app-web.zip                  web build (upload to a static host)
+#   SHA256SUMS.txt                            checksums of the files above
+#
+# Runs when a release is published (gh release create vX.Y.Z …, or the
+# Releases page), or by hand: Actions → Release builds → Run workflow → tag.
+name: Release builds
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and attach files to (e.g. v1.0.0)
+        required: true
+
+permissions:
+  contents: write # upload release assets
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: true
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  FLUTTER_VERSION: 3.44.6
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  test:
+    name: Analyze & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test --exclude-tags live
+
+  web:
+    name: Web
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Bundles the renderer instead of loading it from Google's CDN.
+      - run: flutter build web --release --no-web-resources-cdn
+      - name: Zip (files at the root of the zip, ready for Cloudflare Pages / Netlify)
+        run: |
+          mkdir -p dist
+          (cd build/web && zip -qr ../../dist/mega-checker-app-web.zip .)
+      - run: gh release upload "$TAG" dist/mega-checker-app-web.zip --clobber --repo "$GITHUB_REPOSITORY"
+
+  windows:
+    name: Windows
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Zip the Release folder (the .exe needs its DLLs and data folder)
+        shell: pwsh
+        run: |
+          $src = "build\windows\x64\runner\Release"
+          if (-not (Test-Path "$src\mega-checker-app.exe")) { throw "mega-checker-app.exe not found in $src" }
+          New-Item -ItemType Directory -Force -Path dist\mega-checker-app | Out-Null
+          Copy-Item -Recurse -Force "$src\*" dist\mega-checker-app\
+          Compress-Archive -Force -Path dist\mega-checker-app -DestinationPath dist\mega-checker-app-windows-x64.zip
+      - shell: bash
+        run: gh release upload "$TAG" dist/mega-checker-app-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
+
+  macos:
+    name: macOS
+    needs: test
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: Package .zip and .dmg (drag-to-Applications)
+        run: |
+          APP="build/macos/Build/Products/Release/mega-checker-app.app"
+          test -d "$APP"
+          mkdir -p dist dmg
+          ditto -c -k --keepParent "$APP" dist/mega-checker-app-macos.zip
+          cp -R "$APP" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "mega-checker-app" -srcfolder dmg -ov -format UDZO dist/mega-checker-app-macos.dmg
+      - run: gh release upload "$TAG" dist/mega-checker-app-macos.dmg dist/mega-checker-app-macos.zip --clobber --repo "$GITHUB_REPOSITORY"
+
+  checksums:
+    name: Checksums
+    needs: [web, windows, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: SHA256SUMS.txt
+        run: |
+          mkdir dist && cd dist
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'mega-checker-app-*'
+          sha256sum mega-checker-app-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"

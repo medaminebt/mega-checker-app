@@ -105,7 +105,7 @@ String describeError(Object e) {
     }
     if (m.contains('email not confirmed')) {
       return 'This Supabase user is not confirmed yet — confirm it in the '
-          'dashboard (Authentication → Users).';
+          'dashboard (Authentication › Users).';
     }
     return e.message;
   }

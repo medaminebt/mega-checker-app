@@ -95,7 +95,7 @@ This just closes the door completely.)
 
 ## 6. Connect the app
 
-1. Start the app (see [README.md](README.md#run-it-on-your-mac)).
+1. Start the app (see [README.md](README.md#quick-start)).
 2. The first screen is **Connect to Supabase**. Paste the **Project URL** and
    **publishable key**, then click **Save & connect**. The app tests them and
    saves them on this computer (or in this browser, for the web version), so

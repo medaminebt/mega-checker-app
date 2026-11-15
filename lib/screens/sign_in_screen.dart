@@ -62,7 +62,7 @@ class _SignInScreenState extends State<SignInScreen> {
     return AuthShell(
       title: 'Sign in',
       subtitle:
-          'Use the user you created in Supabase → Authentication → '
+          'Use the user you created in Supabase › Authentication › '
           'Users. Only this user can read your MEGA accounts.',
       footer: Wrap(
         alignment: WrapAlignment.center,

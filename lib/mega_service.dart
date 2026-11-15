@@ -14,9 +14,13 @@ class MegaService {
   /// MEGAcmd or the network.
   static Future<LoginResult> Function(Account)? overrideKeepAlive;
 
+  /// Test-only hook: forces [isSupported] (e.g. false to render the web
+  /// version's UI in a desktop test).
+  static bool? debugSupported;
+
   /// Whether this build can run checks at all (false in a browser).
   static bool get isSupported =>
-      overrideKeepAlive != null || MegaCmd.isSupported;
+      debugSupported ?? (overrideKeepAlive != null || MegaCmd.isSupported);
 
   static bool get isInstalled => MegaCmd.isInstalled;
 

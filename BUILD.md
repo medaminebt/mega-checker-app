@@ -72,7 +72,7 @@ On **another** Mac, macOS blocks the app the first time (it isn't notarized):
 try to open it, then **System Settings → Privacy & Security → Open Anyway**.
 MEGAcmd must be installed on every Mac that runs the app.
 
-More macOS details and troubleshooting: [README.md](README.md#build-the-mac-app-app-for-your-macbook-pro).
+Troubleshooting: [README.md](README.md#troubleshooting). Prebuilt downloads: the repo's **Releases** page.
 
 ---
 

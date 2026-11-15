@@ -109,8 +109,8 @@ class _SetupScreenState extends State<SetupScreen> {
           'Paste your project\'s details once — they\'re saved '
           '${kIsWeb ? 'in this browser' : 'on this computer'}.',
       footer: const Text(
-        'Where to find these: Supabase dashboard → your project → '
-        'Project Settings → Data API (URL) and API Keys (publishable key).\n'
+        'Where to find these: Supabase dashboard › your project › '
+        'Project Settings › Data API (URL) and API Keys (publishable key).\n'
         'Step-by-step guide: SUPABASE_SETUP.md in the project folder.',
         style: AppTheme.caption,
         textAlign: TextAlign.center,

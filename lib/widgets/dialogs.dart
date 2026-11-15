@@ -459,6 +459,8 @@ class _NotesDialogState extends State<NotesDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // "Cmd", not ⌘: the bundled Lexend font has no ⌘ glyph, and on the web
+    // a missing glyph makes Flutter fetch a fallback font from Google.
     final apple =
         defaultTargetPlatform == TargetPlatform.macOS ||
         defaultTargetPlatform == TargetPlatform.iOS;
@@ -510,7 +512,7 @@ class _NotesDialogState extends State<NotesDialog> {
             const SizedBox(height: 8),
             Text(
               '${_text.text.length} characters  ·  '
-              '${apple ? '⌘' : 'Ctrl'}+Enter to save',
+              '${apple ? 'Cmd' : 'Ctrl'}+Enter to save',
               textAlign: TextAlign.right,
               style: AppTheme.caption.copyWith(fontSize: 11.5),
             ),
