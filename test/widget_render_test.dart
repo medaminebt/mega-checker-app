@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mega_keepalive/app_theme.dart';
+import 'package:mega_keepalive/links.dart';
 import 'package:mega_keepalive/main.dart';
 import 'package:mega_keepalive/mega_service.dart';
 import 'package:mega_keepalive/models.dart';
@@ -31,6 +32,7 @@ void main() {
   });
   tearDown(() {
     MegaService.overrideKeepAlive = null;
+    Links.overrideOpen = null;
     TestWidgetsFlutterBinding.ensureInitialized()
         .platformDispatcher
         .implicitView!
@@ -89,8 +91,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // STATUS, EMAIL and LAST LOGIN are sortable → three "unsorted" icons.
-    expect(find.byIcon(Icons.unfold_more_rounded), findsNWidgets(3));
+    // STATUS, EMAIL, LAST LOGIN and STORAGE are sortable → four "unsorted"
+    // icons.
+    expect(find.byIcon(Icons.unfold_more_rounded), findsNWidgets(4));
     await tester.tap(find.text('STATUS'));
     await tester.pump();
     expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
@@ -236,4 +239,170 @@ void main() {
 
     expect(repo.log, ['update mega_key', 'signed out']);
   });
+
+  List<String> shownEmails(WidgetTester tester) => tester
+      .widgetList<AccountRow>(find.byType(AccountRow))
+      .map((r) => r.account.email)
+      .toList();
+
+  testWidgets('STORAGE header sorts by used storage, unmeasured last', (
+    tester,
+  ) async {
+    const gib = 1024 * 1024 * 1024;
+    await tester.pumpWidget(
+      _app(
+        MemoryAccountsRepository([
+          Account(
+            email: 'big@x.com',
+            password: 'p',
+            storageUsedBytes: 5 * gib,
+            storageTotalBytes: 20 * gib,
+          ),
+          Account(email: 'never@x.com', password: 'p'),
+          Account(
+            email: 'small@x.com',
+            password: 'p',
+            storageUsedBytes: gib,
+            storageTotalBytes: 20 * gib,
+          ),
+        ]),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('STORAGE'));
+    await tester.pump();
+    expect(shownEmails(tester), ['small@x.com', 'big@x.com', 'never@x.com']);
+    expect(Prefs.sortColumn, 'storage');
+
+    await tester.tap(find.text('STORAGE'));
+    await tester.pump();
+    expect(shownEmails(tester), ['big@x.com', 'small@x.com', 'never@x.com']);
+
+    // Sorting by last login is still there.
+    await tester.tap(find.text('LAST LOGIN'));
+    await tester.pump();
+    expect(Prefs.sortColumn, 'login');
+  });
+
+  testWidgets('Recheck failed checks only the accounts that failed', (
+    tester,
+  ) async {
+    final checked = <String>[];
+    MegaService.overrideKeepAlive = (a) async {
+      checked.add(a.email);
+      return LoginResult(LoginOutcome.success, 'ok');
+    };
+    final repo = MemoryAccountsRepository([
+      Account(email: 'ok@x.com', password: 'p', lastStatus: 'ok'),
+      Account(email: 'f1@x.com', password: 'p', lastStatus: 'failed'),
+      Account(email: 'new@x.com', password: 'p'),
+      Account(email: 'f2@x.com', password: 'p', lastStatus: 'failed'),
+    ]);
+    await tester.pumpWidget(_app(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Recheck failed (2)'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 100));
+
+    expect(tester.takeException(), isNull);
+    expect(checked, ['f1@x.com', 'f2@x.com']);
+    expect(repo.rowByEmail('f1@x.com')!['last_status'], 'ok');
+    expect(repo.rowByEmail('new@x.com')!['last_status'], isNull);
+    // Nothing failed any more → the button is disabled.
+    final button = find.widgetWithText(OutlinedButton, 'Recheck failed');
+    expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
+  });
+
+  testWidgets('upload folder URL saves and opens in the browser', (
+    tester,
+  ) async {
+    final opened = <Uri>[];
+    Links.overrideOpen = (uri) async {
+      opened.add(uri);
+      return true;
+    };
+    final repo = MemoryAccountsRepository([
+      Account(email: 'a@x.com', password: 'p'),
+    ]);
+    await tester.pumpWidget(_app(repo));
+    await tester.pumpAndSettle();
+
+    final open = find.byIcon(Icons.open_in_new_rounded);
+    expect(tester.widget<IconButton>(_iconButton(open)).onPressed, isNull);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'paste upload link…'),
+      ' https://mega.nz/filerequest/AbC123 ',
+    );
+    await tester.pump(const Duration(seconds: 1)); // debounce → saved
+    expect(
+      repo.rows.values.single['upload_folder_url'],
+      'https://mega.nz/filerequest/AbC123',
+    );
+
+    await tester.tap(open);
+    await tester.pump();
+    expect(opened.single.toString(), 'https://mega.nz/filerequest/AbC123');
+  });
+
+  testWidgets('notes open in a big editor and save to the database', (
+    tester,
+  ) async {
+    final repo = MemoryAccountsRepository([
+      Account(email: 'a@x.com', password: 'p'),
+    ]);
+    await tester.pumpWidget(_app(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('notes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Notes'), findsOneWidget);
+    final editor = tester.widget<TextField>(find.byType(TextField).last);
+    expect(editor.minLines, 10);
+
+    await tester.enterText(
+      find.byType(TextField).last,
+      'Photos backup\nRenew in March',
+    );
+    await tester.pump(); // enables "Save notes"
+    await tester.tap(find.text('Save notes'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1)); // save debounce
+
+    expect(find.text('Notes'), findsNothing);
+    expect(repo.rows.values.single['notes'], 'Photos backup\nRenew in March');
+    expect(find.text('Photos backup  ·  Renew in March'), findsOneWidget);
+  });
+
+  for (final size in const [Size(1024, 700), Size(390, 844)]) {
+    testWidgets('renders without overflow at ${size.width.toInt()}×'
+        '${size.height.toInt()} (small window / phone browser)', (
+      tester,
+    ) async {
+      final v = tester.view;
+      v.physicalSize = size;
+      v.devicePixelRatio = 1.0;
+      await tester.pumpWidget(
+        _app(
+          MemoryAccountsRepository([
+            for (var i = 0; i < 8; i++)
+              Account(
+                email: 'account$i@example.com',
+                password: 'p',
+                lastStatus: i.isEven ? 'ok' : 'failed',
+                storageUsedBytes: i * 1073741824,
+                storageTotalBytes: 21474836480,
+              ),
+          ]),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.byType(AccountRow), findsWidgets);
+    });
+  }
 }
+
+Finder _iconButton(Finder icon) =>
+    find.ancestor(of: icon, matching: find.byType(IconButton));

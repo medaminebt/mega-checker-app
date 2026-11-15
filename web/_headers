@@ -1,0 +1,11 @@
+# HTTP response headers for Netlify and Cloudflare Pages (both read this file
+# from the published folder). Other hosts: see BUILD.md → "Web: keep it private".
+#
+# X-Robots-Tag is the strongest "do not index" signal: unlike the <meta> tag it
+# also covers robots.txt, llms.txt, images and JavaScript files.
+/*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex, noai, noimageai
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()

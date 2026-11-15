@@ -1,8 +1,9 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Small local settings stored with `shared_preferences` (on macOS this is the
-/// app's `NSUserDefaults` plist). Nothing secret about MEGA lives here — the
-/// accounts themselves are in Supabase.
+/// Small local settings stored with `shared_preferences`: the app's
+/// `NSUserDefaults` plist on macOS, a JSON file in `%APPDATA%` on Windows,
+/// `localStorage` in the web build. Nothing secret about MEGA lives here —
+/// the accounts themselves are in Supabase.
 ///
 /// Note: `supabase_flutter` also keeps its sign-in session in
 /// shared_preferences, so you stay signed in between launches.
@@ -50,7 +51,7 @@ class Prefs {
   static bool get showSecrets => _p?.getBool(_kShowSecrets) ?? false;
   static set showSecrets(bool v) => _p?.setBool(_kShowSecrets, v);
 
-  /// Table sort: `null`, `'status'`, `'email'` or `'login'`.
+  /// Table sort: `null`, `'status'`, `'email'`, `'login'` or `'storage'`.
   static String? get sortColumn => _p?.getString(_kSortColumn);
   static set sortColumn(String? v) =>
       v == null ? _p?.remove(_kSortColumn) : _p?.setString(_kSortColumn, v);

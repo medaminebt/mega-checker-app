@@ -2,7 +2,8 @@
 -- MEGA Keep-Alive — Supabase schema
 --
 -- Run ONCE: Supabase dashboard → your project → SQL Editor → "New query" →
--- paste this whole file → "Run". It is safe to run again (idempotent).
+-- paste this whole file → "Run". It is safe to run again (idempotent), and
+-- running it again is also how an existing project gets new columns.
 -- =============================================================================
 
 -- One row per MEGA account, owned by the Supabase user who created it.
@@ -14,6 +15,7 @@ create table if not exists public.mega_accounts (
   password            text        not null default '',
   mega_key            text        not null default '',  -- MEGA recovery key (typed in by hand)
   notes               text        not null default '',
+  upload_folder_url   text        not null default '',  -- MEGA upload folder link
   last_login_at       timestamptz,                       -- last SUCCESSFUL login
   last_checked_at     timestamptz,                       -- last attempt (ok or not)
   last_status         text        check (last_status in ('ok', 'failed')),
@@ -24,6 +26,10 @@ create table if not exists public.mega_accounts (
   updated_at          timestamptz not null default now(),
   constraint mega_accounts_user_email_key unique (user_id, email)
 );
+
+-- Columns added after the first release (no-ops on a fresh table).
+alter table public.mega_accounts
+  add column if not exists upload_folder_url text not null default '';
 
 comment on table public.mega_accounts is
   'MEGA accounts checked by the MEGA Keep-Alive desktop app.';
@@ -75,3 +81,6 @@ create policy "Owner can delete" on public.mega_accounts
 
 revoke all on table public.mega_accounts from anon;
 grant select, insert, update, delete on table public.mega_accounts to authenticated;
+
+-- Make the API (PostgREST) pick up new columns right away.
+notify pgrst, 'reload schema';

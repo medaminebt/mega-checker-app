@@ -85,6 +85,40 @@ void main() {
       expect(keep.unchanged, 2);
     });
 
+    test('upload folder URL is inserted and updated like the other fields', () {
+      final p = AccountImport.plan(existing, [
+        Account(
+          email: 'a@x.com',
+          password: 'old',
+          uploadFolderUrl: 'https://mega.nz/filerequest/abc',
+        ),
+        Account(
+          email: 'new@x.com',
+          password: 'p',
+          uploadFolderUrl: 'https://mega.nz/filerequest/new',
+        ),
+      ], overwrite: true);
+      expect(p.toUpdate[existing[0]], {
+        'upload_folder_url': 'https://mega.nz/filerequest/abc',
+      });
+      expect(
+        p.toInsert.single.uploadFolderUrl,
+        'https://mega.nz/filerequest/new',
+      );
+      expect(
+        p.toInsert.single.toInsertRow()['upload_folder_url'],
+        'https://mega.nz/filerequest/new',
+      );
+    });
+
+    test('rows without an upload URL don\'t send the column on insert', () {
+      // Keeps "Add account" working before the column migration has run.
+      expect(
+        Account(email: 'a@x.com', password: 'p').toInsertRow(),
+        isNot(contains('upload_folder_url')),
+      );
+    });
+
     test('empty incoming key / notes never wipe stored values', () {
       final p = AccountImport.plan(existing, [
         Account(email: 'a@x.com', password: 'old', megaKey: '', notes: ''),

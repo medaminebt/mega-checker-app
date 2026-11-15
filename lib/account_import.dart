@@ -76,7 +76,8 @@ class AccountImport {
   /// Compare [incoming] rows with [existing] ones (matched by email).
   ///
   /// New emails are inserted. For known emails, when [overwrite] is true the
-  /// non-empty incoming password / MEGA key / notes replace the stored ones;
+  /// non-empty incoming password / MEGA key / notes / upload folder URL
+  /// replace the stored ones;
   /// otherwise they're left alone.
   static ImportPlan plan(
     List<Account> existing,
@@ -103,6 +104,7 @@ class AccountImport {
               password: inc.password,
               megaKey: inc.megaKey,
               notes: inc.notes,
+              uploadFolderUrl: inc.uploadFolderUrl,
             ),
           );
         }
@@ -121,6 +123,10 @@ class AccountImport {
       }
       if (inc.notes.isNotEmpty && inc.notes != ex.notes) {
         patch['notes'] = inc.notes;
+      }
+      if (inc.uploadFolderUrl.isNotEmpty &&
+          inc.uploadFolderUrl != ex.uploadFolderUrl) {
+        patch['upload_folder_url'] = inc.uploadFolderUrl;
       }
       if (patch.isEmpty) {
         unchanged++;

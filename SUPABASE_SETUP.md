@@ -41,15 +41,28 @@ You'll end up with:
 
 What the script does:
 
-- creates `mega_accounts` (email, password, mega_key, notes, last_login_at,
-  last_checked_at, last_status, last_error, storage_used_bytes,
-  storage_total_bytes, …),
+- creates `mega_accounts` (email, password, mega_key, notes,
+  upload_folder_url, last_login_at, last_checked_at, last_status, last_error,
+  storage_used_bytes, storage_total_bytes, …),
 - turns on **Row Level Security** so a signed-in user can only read and write
   **their own** rows,
 - removes all access for anonymous requests (the publishable key alone can't
   read anything).
 
 It's safe to run again if you're unsure whether it worked.
+
+### Updating an existing project
+
+When a new version of the app adds a column, open the **SQL Editor**, paste
+the whole [`supabase/schema.sql`](supabase/schema.sql) again and click
+**Run**. It keeps your data and only adds what's missing.
+
+| App version | Database change |
+|---|---|
+| Upload folder URL | adds `upload_folder_url` (text, default empty) |
+
+If you skip this, the app still loads and checks accounts. Only saving an
+upload folder URL fails, with a message pointing here.
 
 ## 3. Create your app user
 
@@ -85,7 +98,8 @@ This just closes the door completely.)
 1. Start the app (see [README.md](README.md#run-it-on-your-mac)).
 2. The first screen is **Connect to Supabase**. Paste the **Project URL** and
    **publishable key**, then click **Save & connect**. The app tests them and
-   saves them on your Mac (shared_preferences), so you only do this once.
+   saves them on this computer (or in this browser, for the web version), so
+   you only do this once per device.
 3. **Sign in** with the user from step 3.
 4. Click **Paste list** and paste your MEGA accounts, one per line:
 
@@ -102,7 +116,9 @@ the raw data.
 
 ## Free plan: what to know
 
-- **Limits**: 500 MB database, which is far more than this app will ever use.
+- **Limits**: 500 MB database and 5 GB egress a month, far more than this app
+  will ever use (about 0.1 MB and 3 MB a month with 40 accounts). Full
+  breakdown: [SUPABASE_USAGE.md](SUPABASE_USAGE.md).
 - **Pausing**: free projects are **paused after ~1 week without activity**.
   Using the app counts as activity. If it does pause, the app shows *"Can't
   reach Supabase…"*. Open the Supabase dashboard and click **Restore project**
@@ -129,5 +145,8 @@ the raw data.
 - **Wipe all local app settings** (URL, key, signed-in session, UI prefs):
 
   ```sh
-  defaults delete com.megakeepalive.megaKeepalive
+  defaults delete com.megakeepalive.megaKeepalive    # macOS
   ```
+
+  Windows: delete the folder `%APPDATA%\com.megakeepalive\mega-checker-app\`.
+  Web: clear the site's data in your browser's settings.

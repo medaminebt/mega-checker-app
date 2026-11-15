@@ -12,8 +12,12 @@ class Account {
   /// MEGA recovery key — typed in by hand, the app never derives it.
   String megaKey;
 
-  /// Free-text notes.
+  /// Free-text notes (may span several lines).
   String notes;
+
+  /// Link to a MEGA upload folder ("file request" / folder link) — opened in
+  /// the browser to upload straight into this account without logging in.
+  String uploadFolderUrl;
 
   /// Last **successful** login.
   DateTime? lastLoginAt;
@@ -40,6 +44,7 @@ class Account {
     required this.password,
     this.megaKey = '',
     this.notes = '',
+    this.uploadFolderUrl = '',
     this.lastLoginAt,
     this.lastCheckedAt,
     this.lastStatus,
@@ -90,6 +95,7 @@ class Account {
       password: (r['password'] ?? '') as String,
       megaKey: (r['mega_key'] ?? '') as String,
       notes: (r['notes'] ?? '') as String,
+      uploadFolderUrl: (r['upload_folder_url'] ?? '') as String,
       lastLoginAt: ts('last_login_at'),
       lastCheckedAt: ts('last_checked_at'),
       lastStatus: r['last_status'] as String?,
@@ -100,12 +106,15 @@ class Account {
   }
 
   /// Columns sent when inserting a new row (`user_id` defaults to the
-  /// signed-in user on the database side).
+  /// signed-in user on the database side). `upload_folder_url` is only sent
+  /// when set, so adding accounts keeps working on a database that hasn't
+  /// run the column migration yet (see supabase/schema.sql).
   Map<String, dynamic> toInsertRow() => {
     'email': normaliseEmail(email),
     'password': password,
     'mega_key': megaKey,
     'notes': notes,
+    if (uploadFolderUrl.isNotEmpty) 'upload_folder_url': uploadFolderUrl,
   };
 }
 
@@ -120,6 +129,9 @@ class StorageInfo {
 
   double get fraction =>
       totalBytes <= 0 ? 0 : (usedBytes / totalBytes).clamp(0.0, 1.0);
+
+  /// Free space; 0 when the account is over its quota.
+  int get freeBytes => usedBytes >= totalBytes ? 0 : totalBytes - usedBytes;
 
   @override
   bool operator ==(Object other) =>
@@ -141,6 +153,7 @@ enum LoginOutcome {
   invalidEmail, // malformed address, rejected before contacting MEGA
   needs2fa, // account has 2FA (this app doesn't handle codes)
   megacmdMissing, // MEGAcmd not installed / not found
+  unsupported, // web build: MEGAcmd can't run in a browser
   error, // anything else (timeout, network, unexpected output)
 }
 
@@ -168,6 +181,8 @@ class LoginResult {
         return 'Account needs 2FA';
       case LoginOutcome.megacmdMissing:
         return 'MEGAcmd not installed';
+      case LoginOutcome.unsupported:
+        return 'Checks need the desktop app';
       case LoginOutcome.error:
         return message;
     }

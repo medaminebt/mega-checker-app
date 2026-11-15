@@ -93,8 +93,11 @@ class AppTheme {
     letterSpacing: 0.6,
     color: textSecondary,
   );
+  // Menlo on macOS, Consolas / Cascadia Mono on Windows. A browser only has
+  // the fonts the app bundles, so the web build ends on Lexend.
   static const TextStyle mono = TextStyle(
     fontFamily: 'Menlo',
+    fontFamilyFallback: ['Consolas', 'Cascadia Mono', 'Courier New', font],
     fontSize: 12.5,
     color: textPrimary,
   );

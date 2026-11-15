@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -10,8 +9,10 @@ import '../accounts_repository.dart';
 import '../app_theme.dart';
 import '../csv_import.dart';
 import '../format.dart';
+import '../links.dart';
 import '../mega_service.dart';
 import '../models.dart';
+import '../platform/native.dart';
 import '../prefs.dart';
 import '../widgets/account_row.dart';
 import '../widgets/dialogs.dart';
@@ -56,6 +57,7 @@ class _HomePageState extends State<HomePage> {
   String? _progress;
 
   bool _showSecrets = Prefs.showSecrets;
+  final _search = TextEditingController();
   String _filter = '';
   String? _sortColumn = Prefs.sortColumn;
   bool _sortAsc = Prefs.sortAsc;
@@ -80,6 +82,7 @@ class _HomePageState extends State<HomePage> {
     _stopRequested = true;
     _flushTimer?.cancel();
     unawaited(_flush()); // don't lose the last edits
+    _search.dispose();
     super.dispose();
   }
 
@@ -181,11 +184,18 @@ class _HomePageState extends State<HomePage> {
     if (p.containsKey('password')) a.password = p['password'] as String;
     if (p.containsKey('mega_key')) a.megaKey = p['mega_key'] as String;
     if (p.containsKey('notes')) a.notes = p['notes'] as String;
+    if (p.containsKey('upload_folder_url')) {
+      a.uploadFolderUrl = p['upload_folder_url'] as String;
+    }
   }
 
   void _onFieldChanged(Account a, String column, String value) {
     _queue(a, {
-      column: column == 'email' ? Account.normaliseEmail(value) : value,
+      column: switch (column) {
+        'email' => Account.normaliseEmail(value),
+        'upload_folder_url' => value.trim(),
+        _ => value,
+      },
     });
   }
 
@@ -251,11 +261,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _importCsv() async {
-    final path = await CsvImport.pickCsvFile();
-    if (path == null) return;
+    final PickedCsv? picked;
     final List<Account> parsed;
     try {
-      parsed = CsvImport.parseFile(path);
+      picked = await CsvImport.pickCsv();
+      if (picked == null) return;
+      parsed = CsvImport.parseString(picked.text);
     } catch (e) {
       _snack('Import failed: $e', error: true);
       return;
@@ -268,24 +279,32 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     // CSV import only adds new emails; existing accounts are left alone.
-    await _applyImport(parsed, overwrite: false, source: path.split('/').last);
+    await _applyImport(parsed, overwrite: false, source: picked.name);
   }
 
   Future<void> _export() async {
-    final path = await CsvImport.pickSaveCsvFile();
-    if (path == null) return;
-    final out = path.toLowerCase().endsWith('.csv') ? path : '$path.csv';
     try {
-      CsvImport.exportToFile(out, _accounts);
+      final saved = await CsvImport.saveCsv(_accounts);
+      if (saved == null) return;
+      final name = saved.split(RegExp(r'[/\\]')).last;
+      final reveal = FileManager.revealLabel;
       _snack(
-        'Exported ${_accounts.length} account(s) to ${out.split('/').last}.',
-        action: SnackBarAction(
-          label: 'Reveal in Finder',
-          onPressed: () => Process.run('open', ['-R', out]),
-        ),
+        'Exported ${_accounts.length} account(s) to $name.',
+        action: reveal == null
+            ? null
+            : SnackBarAction(
+                label: reveal,
+                onPressed: () => FileManager.reveal(saved),
+              ),
       );
     } catch (e) {
       _snack('Export failed: $e', error: true);
+    }
+  }
+
+  Future<void> _openUpload(Account a, Uri uri) async {
+    if (!await Links.open(uri)) {
+      _snack("Couldn't open the upload folder of ${a.email}.", error: true);
     }
   }
 
@@ -344,10 +363,23 @@ class _HomePageState extends State<HomePage> {
     return r;
   }
 
-  Future<void> _runAll() async {
-    if (_running || _accounts.isEmpty) return;
+  bool get _canCheck => MegaService.isSupported;
+
+  static const _noChecksHere =
+      "Checks need the desktop app (macOS or Windows) — MEGAcmd can't run "
+      'in a browser.';
+
+  List<Account> get _failedAccounts =>
+      _accounts.where((a) => a.status == AccountStatus.failed).toList();
+
+  Future<void> _runAll() => _runQueue(List<Account>.from(_accounts));
+
+  Future<void> _recheckFailed() => _runQueue(_failedAccounts, label: 'Recheck');
+
+  /// Check [queue] one account at a time, with a random pause in between.
+  Future<void> _runQueue(List<Account> queue, {String label = 'Done'}) async {
+    if (_running || queue.isEmpty || !_canCheck) return;
     await _flush();
-    final queue = List<Account>.from(_accounts);
     setState(() {
       _running = true;
       _stopRequested = false;
@@ -384,14 +416,15 @@ class _HomePageState extends State<HomePage> {
       _progress = null;
     });
     _snack(
-      'Done: $ok logged in, $failed failed${stopped ? ' (stopped early)' : ''}.'
+      '$label: $ok logged in, $failed failed'
+      '${stopped ? ' (stopped early)' : ''}.'
       '${saved ? ' Saved to Supabase.' : ''}',
       error: failed > 0 && ok == 0,
     );
   }
 
   Future<void> _runOne(Account a) async {
-    if (_running) return;
+    if (_running || !_canCheck) return;
     setState(() {
       _running = true;
       _runTotal = 1;
@@ -431,11 +464,12 @@ class _HomePageState extends State<HomePage> {
 
   void _snack(String msg, {bool error = false, SnackBarAction? action}) {
     if (!mounted) return;
+    final width = min(620.0, MediaQuery.sizeOf(context).width - 32);
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
-          width: 620,
+          width: width,
           duration: Duration(seconds: error ? 6 : 4),
           action: action,
           content: Row(
@@ -507,6 +541,13 @@ class _HomePageState extends State<HomePage> {
             c = a.email.toLowerCase().compareTo(b.email.toLowerCase());
           case 'login':
             c = (a.lastLoginAt ?? epoch).compareTo(b.lastLoginAt ?? epoch);
+          case 'storage':
+            // Used storage. Accounts never measured go last either way.
+            final x = a.storageUsedBytes, y = b.storageUsedBytes;
+            if (x == null || y == null) {
+              return x == y ? 0 : (x == null ? 1 : -1);
+            }
+            c = x.compareTo(y);
           default:
             c = _statusRank(a).compareTo(_statusRank(b));
         }
@@ -517,6 +558,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ---- build ---------------------------------------------------------------
+
+  /// Phone-sized / narrow browser windows get a stacked layout.
+  bool get _compact => MediaQuery.sizeOf(context).width < 760;
 
   @override
   Widget build(BuildContext context) {
@@ -532,20 +576,33 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _header() {
+    final compact = _compact;
     final who = [
       if (widget.userEmail != null) widget.userEmail!,
       if (widget.projectHost != null) widget.projectHost!,
     ].join('  ·  ');
+    final secretsLabel = _showSecrets
+        ? 'Hide passwords & keys'
+        : 'Show passwords & keys';
+    final secretsIcon = Icon(
+      _showSecrets ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+      size: compact ? 20 : 17,
+    );
+    void toggleSecrets() {
+      setState(() => _showSecrets = !_showSecrets);
+      Prefs.showSecrets = _showSecrets;
+    }
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 14, 20, 14),
+      padding: EdgeInsets.fromLTRB(compact ? 16 : 24, 14, compact ? 8 : 20, 14),
       decoration: const BoxDecoration(
         color: AppTheme.bgBase,
         border: Border(bottom: BorderSide(color: AppTheme.megaRed, width: 3)),
       ),
       child: Row(
         children: [
-          const MegaLogo(size: 36, glow: true),
-          const SizedBox(width: 14),
+          MegaLogo(size: compact ? 30 : 36, glow: true),
+          SizedBox(width: compact ? 10 : 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,8 +610,9 @@ class _HomePageState extends State<HomePage> {
               children: [
                 Text(
                   'MEGA Keep-Alive',
+                  overflow: TextOverflow.ellipsis,
                   style: AppTheme.h3.copyWith(
-                    fontSize: 18,
+                    fontSize: compact ? 16 : 18,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.3,
                   ),
@@ -568,27 +626,25 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
-          OutlinedButton.icon(
-            style: AppTheme.ghostButton.copyWith(
-              padding: const WidgetStatePropertyAll(
-                EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          if (compact)
+            IconButton(
+              tooltip: secretsLabel,
+              onPressed: toggleSecrets,
+              icon: secretsIcon,
+            )
+          else ...[
+            OutlinedButton.icon(
+              style: AppTheme.ghostButton.copyWith(
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
               ),
+              onPressed: toggleSecrets,
+              icon: secretsIcon,
+              label: Text(secretsLabel),
             ),
-            onPressed: () {
-              setState(() => _showSecrets = !_showSecrets);
-              Prefs.showSecrets = _showSecrets;
-            },
-            icon: Icon(
-              _showSecrets
-                  ? Icons.visibility_off_rounded
-                  : Icons.visibility_rounded,
-              size: 17,
-            ),
-            label: Text(
-              _showSecrets ? 'Hide passwords & keys' : 'Show passwords & keys',
-            ),
-          ),
-          const SizedBox(width: 8),
+            const SizedBox(width: 8),
+          ],
           if (widget.onChangeProject != null)
             IconButton(
               tooltip: 'Supabase project settings',
@@ -613,29 +669,45 @@ class _HomePageState extends State<HomePage> {
     if (_loadError != null) return _errorState();
 
     final visible = _visible();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _stats(),
-          const SizedBox(height: 22),
-          SectionTitle(
-            'Your MEGA accounts',
-            subtitle:
-                'Logins run through MEGAcmd one account at a time, '
-                'with a $kDelayMinSec–$kDelayMaxSec s pause in between. '
-                'Edits save to Supabase automatically.',
-          ),
-          const SizedBox(height: 14),
-          _toolbar(),
-          if (_running) _progressBar(),
-          const SizedBox(height: 12),
-          Expanded(child: _table(visible)),
-          const SizedBox(height: 10),
-          _footer(visible.length),
-        ],
-      ),
+    final side = _compact ? 16.0 : 24.0;
+    final padding = EdgeInsets.fromLTRB(side, 20, side, 12);
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Too short to give the table room (small laptop) or a phone: scroll
+        // the whole page and give the table a fixed height instead.
+        final short = _compact || box.maxHeight < 640;
+        final table = _table(visible);
+        final column = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _stats(),
+            const SizedBox(height: 22),
+            SectionTitle(
+              'Your MEGA accounts',
+              subtitle: _canCheck
+                  ? 'Logins run through MEGAcmd one account at a time, '
+                        'with a $kDelayMinSec–$kDelayMaxSec s pause in between. '
+                        'Edits save to Supabase automatically.'
+                  : 'This browser version manages your list — run the checks '
+                        'from the desktop app (macOS / Windows). Edits save to '
+                        'Supabase automatically.',
+            ),
+            const SizedBox(height: 14),
+            _toolbar(),
+            if (_running) _progressBar(),
+            const SizedBox(height: 12),
+            if (short)
+              SizedBox(height: 460, child: table)
+            else
+              Expanded(child: table),
+            const SizedBox(height: 10),
+            _footer(visible.length),
+          ],
+        );
+        return short
+            ? SingleChildScrollView(padding: padding, child: column)
+            : Padding(padding: padding, child: column);
+      },
     );
   }
 
@@ -705,65 +777,61 @@ class _HomePageState extends State<HomePage> {
     final untested = _accounts
         .where((a) => a.status == AccountStatus.untested)
         .length;
-    var used = 0, quota = 0, measured = 0;
+    var used = 0, quota = 0, free = 0, measured = 0;
     for (final a in _accounts) {
       final s = a.storage;
       if (s == null) continue;
       used += s.usedBytes;
       quota += s.totalBytes;
+      free += s.freeBytes;
       measured++;
     }
 
+    final cards = [
+      _StatCard(label: 'Accounts', value: '$total', dot: AppTheme.ashGrey),
+      _StatCard(label: 'Logged in', value: '$ok', dot: AppTheme.success),
+      _StatCard(label: 'Failed', value: '$failed', dot: AppTheme.megaRed),
+      _StatCard(
+        label: 'Not checked',
+        value: '$untested',
+        dot: AppTheme.textMuted,
+      ),
+    ];
+    final storageCard = _StatCard(
+      label: 'Total storage',
+      value: measured == 0 ? '—' : '${Fmt.bytes(used)} / ${Fmt.bytes(quota)}',
+      dot: AppTheme.megaBlue,
+      caption: measured == 0
+          ? 'Measured on each successful login'
+          : '${Fmt.bytes(free)} free  ·  across $measured '
+                'account${measured == 1 ? '' : 's'}',
+      fraction: quota == 0 ? null : used / quota,
+    );
+
+    if (_compact) {
+      return LayoutBuilder(
+        builder: (context, box) {
+          final half = (box.maxWidth - 12) / 2;
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final c in cards) SizedBox(width: half, child: c),
+              SizedBox(width: box.maxWidth, child: storageCard),
+            ],
+          );
+        },
+      );
+    }
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: _StatCard(
-              label: 'Accounts',
-              value: '$total',
-              dot: AppTheme.ashGrey,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _StatCard(
-              label: 'Logged in',
-              value: '$ok',
-              dot: AppTheme.success,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _StatCard(
-              label: 'Failed',
-              value: '$failed',
-              dot: AppTheme.megaRed,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _StatCard(
-              label: 'Not checked',
-              value: '$untested',
-              dot: AppTheme.textMuted,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: _StatCard(
-              label: 'Total storage',
-              value: measured == 0
-                  ? '—'
-                  : '${Fmt.bytes(used)} / ${Fmt.bytes(quota)}',
-              dot: AppTheme.megaBlue,
-              caption: measured == 0
-                  ? 'Measured on each successful login'
-                  : 'Across $measured account${measured == 1 ? '' : 's'}',
-              fraction: quota == 0 ? null : used / quota,
-            ),
-          ),
+          for (final c in cards) ...[
+            Expanded(child: c),
+            const SizedBox(width: 12),
+          ],
+          Expanded(flex: 2, child: storageCard),
         ],
       ),
     );
@@ -771,84 +839,113 @@ class _HomePageState extends State<HomePage> {
 
   Widget _toolbar() {
     final disabled = _running || _busy;
-    final compact = AppTheme.ghostButton.copyWith(
+    final small = AppTheme.ghostButton.copyWith(
       padding: const WidgetStatePropertyAll(
         EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       ),
     );
+    final failed = _failedAccounts.length;
+
+    Widget checkAll;
+    if (!_running) {
+      checkAll = ElevatedButton.icon(
+        onPressed: !_canCheck || _accounts.isEmpty || _busy ? null : _runAll,
+        icon: const Icon(Icons.play_arrow_rounded, size: 20),
+        label: const Text('Check all accounts'),
+      );
+      if (!_canCheck) {
+        checkAll = Tooltip(message: _noChecksHere, child: checkAll);
+      }
+    } else {
+      checkAll = ElevatedButton.icon(
+        onPressed: _stopRequested
+            ? null
+            : () => setState(() => _stopRequested = true),
+        icon: const Icon(Icons.stop_rounded, size: 20),
+        label: Text(_stopRequested ? 'Stopping…' : 'Stop'),
+      );
+    }
+
+    final buttons = <Widget>[
+      checkAll,
+      Tooltip(
+        message: _canCheck
+            ? 'Check again only the accounts whose last check failed'
+            : _noChecksHere,
+        child: OutlinedButton.icon(
+          onPressed: !_canCheck || disabled || failed == 0
+              ? null
+              : _recheckFailed,
+          icon: const Icon(Icons.replay_rounded, size: 18),
+          label: Text(
+            failed == 0 ? 'Recheck failed' : 'Recheck failed ($failed)',
+          ),
+        ),
+      ),
+      OutlinedButton.icon(
+        onPressed: disabled ? null : _addAccount,
+        icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+        label: const Text('Add account'),
+      ),
+      OutlinedButton.icon(
+        onPressed: disabled ? null : _pasteList,
+        icon: const Icon(Icons.playlist_add_rounded, size: 20),
+        label: const Text('Paste list'),
+      ),
+      OutlinedButton.icon(
+        style: small,
+        onPressed: disabled ? null : _importCsv,
+        icon: const Icon(Icons.upload_file_rounded, size: 18),
+        label: const Text('Import CSV'),
+      ),
+      OutlinedButton.icon(
+        style: small,
+        onPressed: disabled || _accounts.isEmpty ? null : _export,
+        icon: const Icon(Icons.download_rounded, size: 18),
+        label: const Text('Export CSV'),
+      ),
+    ];
+    final refresh = SizedBox.square(
+      dimension: 48,
+      child: OutlinedButton(
+        style: small.copyWith(
+          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+        ),
+        onPressed: disabled ? null : _refresh,
+        child: const Tooltip(
+          message: 'Reload from Supabase',
+          child: Icon(Icons.refresh_rounded, size: 20),
+        ),
+      ),
+    );
+    final search = TextField(
+      controller: _search,
+      onChanged: (v) => setState(() => _filter = v),
+      decoration: const InputDecoration(
+        hintText: 'Search email or notes…',
+        prefixIcon: Icon(Icons.search_rounded, size: 19),
+        contentPadding: EdgeInsets.symmetric(vertical: 14),
+      ),
+    );
+
+    if (_compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(spacing: 10, runSpacing: 10, children: [...buttons, refresh]),
+          const SizedBox(height: 12),
+          search,
+        ],
+      );
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              if (!_running)
-                ElevatedButton.icon(
-                  onPressed: _accounts.isEmpty || _busy ? null : _runAll,
-                  icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                  label: const Text('Check all accounts'),
-                )
-              else
-                ElevatedButton.icon(
-                  onPressed: _stopRequested
-                      ? null
-                      : () => setState(() => _stopRequested = true),
-                  icon: const Icon(Icons.stop_rounded, size: 20),
-                  label: Text(_stopRequested ? 'Stopping…' : 'Stop'),
-                ),
-              OutlinedButton.icon(
-                onPressed: disabled ? null : _addAccount,
-                icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-                label: const Text('Add account'),
-              ),
-              OutlinedButton.icon(
-                onPressed: disabled ? null : _pasteList,
-                icon: const Icon(Icons.playlist_add_rounded, size: 20),
-                label: const Text('Paste list'),
-              ),
-              OutlinedButton.icon(
-                style: compact,
-                onPressed: disabled ? null : _importCsv,
-                icon: const Icon(Icons.upload_file_rounded, size: 18),
-                label: const Text('Import CSV'),
-              ),
-              OutlinedButton.icon(
-                style: compact,
-                onPressed: disabled || _accounts.isEmpty ? null : _export,
-                icon: const Icon(Icons.download_rounded, size: 18),
-                label: const Text('Export CSV'),
-              ),
-            ],
-          ),
-        ),
+        Expanded(child: Wrap(spacing: 10, runSpacing: 10, children: buttons)),
         const SizedBox(width: 12),
-        SizedBox.square(
-          dimension: 48,
-          child: OutlinedButton(
-            style: compact.copyWith(
-              padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-            ),
-            onPressed: disabled ? null : _refresh,
-            child: const Tooltip(
-              message: 'Reload from Supabase',
-              child: Icon(Icons.refresh_rounded, size: 20),
-            ),
-          ),
-        ),
+        refresh,
         const SizedBox(width: 10),
-        SizedBox(
-          width: 260,
-          child: TextField(
-            onChanged: (v) => setState(() => _filter = v),
-            decoration: const InputDecoration(
-              hintText: 'Search email or notes…',
-              prefixIcon: Icon(Icons.search_rounded, size: 19),
-              contentPadding: EdgeInsets.symmetric(vertical: 14),
-            ),
-          ),
-        ),
+        SizedBox(width: 260, child: search),
       ],
     );
   }
@@ -877,7 +974,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _table(List<Account> visible) {
-    return Card(
+    final card = Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
@@ -898,14 +995,32 @@ class _HomePageState extends State<HomePage> {
                         showSecrets: _showSecrets,
                         enabled: !_running && !_busy,
                         onFieldChanged: (col, v) => _onFieldChanged(a, col, v),
-                        onCheck: () => _runOne(a),
+                        onCheck: _canCheck ? () => _runOne(a) : null,
+                        checkTooltip: _canCheck
+                            ? 'Check this account now'
+                            : _noChecksHere,
                         onDelete: () => _delete(a),
+                        onOpenUpload: (uri) => _openUpload(a, uri),
                       );
                     },
                   ),
           ),
         ],
       ),
+    );
+    // Narrow window: keep the columns readable and scroll sideways.
+    return LayoutBuilder(
+      builder: (context, box) {
+        if (box.maxWidth >= AccountCols.minTableWidth) return card;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: AccountCols.minTableWidth,
+            height: box.maxHeight,
+            child: card,
+          ),
+        );
+      },
     );
   }
 
@@ -917,7 +1032,7 @@ class _HomePageState extends State<HomePage> {
     letterSpacing: 1.1,
   );
 
-  Widget _sortHeader(String label, String column) {
+  Widget _sortHeader(String label, String column, {String? tooltip}) {
     final active = _sortColumn == column;
     final icon = !active
         ? Icons.unfold_more_rounded
@@ -925,7 +1040,7 @@ class _HomePageState extends State<HomePage> {
               ? Icons.arrow_upward_rounded
               : Icons.arrow_downward_rounded);
     final color = active ? AppTheme.textPrimary : AppTheme.textMuted;
-    return InkWell(
+    final header = InkWell(
       borderRadius: BorderRadius.circular(AppTheme.radiusSm),
       onTap: () => _cycleSort(column),
       child: Padding(
@@ -950,6 +1065,7 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+    return tooltip == null ? header : Tooltip(message: tooltip, child: header);
   }
 
   Widget _tableHeader() {
@@ -978,8 +1094,22 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(width: AccountCols.gap),
           SizedBox(
             width: AccountCols.login,
-            child: left(_sortHeader('LAST LOGIN · STORAGE', 'login')),
+            child: Row(
+              children: [
+                Flexible(child: _sortHeader('LAST LOGIN', 'login')),
+                const Text('·', style: _headerStyle),
+                Flexible(
+                  child: _sortHeader(
+                    'STORAGE',
+                    'storage',
+                    tooltip: 'Sort by used storage (unchecked accounts last)',
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: AccountCols.gap),
+          Expanded(flex: AccountCols.uploadFlex, child: h('UPLOAD FOLDER')),
           const SizedBox(width: AccountCols.gap),
           Expanded(flex: AccountCols.notesFlex, child: h('NOTES')),
           const SizedBox(width: AccountCols.gap),
@@ -1059,7 +1189,13 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           SizedBox(width: 8),
-          Text('Saving to Supabase…', style: AppTheme.caption),
+          Flexible(
+            child: Text(
+              'Saving to Supabase…',
+              overflow: TextOverflow.ellipsis,
+              style: AppTheme.caption,
+            ),
+          ),
         ],
       );
     } else if (_syncError != null) {
@@ -1088,7 +1224,13 @@ class _HomePageState extends State<HomePage> {
         children: [
           _Dot(AppTheme.success),
           SizedBox(width: 8),
-          Text('All changes saved to Supabase', style: AppTheme.caption),
+          Flexible(
+            child: Text(
+              'All changes saved to Supabase',
+              overflow: TextOverflow.ellipsis,
+              style: AppTheme.caption,
+            ),
+          ),
         ],
       );
     }

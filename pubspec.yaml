@@ -1,5 +1,5 @@
 name: mega_keepalive
-description: "Keep MEGA accounts alive: logs in, records last login + storage in Supabase. macOS desktop."
+description: "Keep MEGA accounts alive: logs in, records last login + storage in Supabase. macOS, Windows and web."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -14,7 +14,8 @@ dependencies:
   csv: ^8.0.0                 # CSV import / export (handles quoted fields)
   supabase_flutter: ^2.18.3   # Supabase (Postgres) database + auth
   shared_preferences: ^2.5.6  # local settings (Supabase URL/key, UI prefs)
-
+  file_selector: ^1.1.0       # CSV open / save dialogs (macOS, Windows, web)
+  url_launcher: ^6.3.3        # opens upload folder links in the browser
 dev_dependencies:
   flutter_test:
     sdk: flutter

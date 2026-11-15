@@ -2,25 +2,32 @@ import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
 import '../format.dart';
+import '../links.dart';
 import '../models.dart';
 import 'badges.dart';
+import 'dialogs.dart';
 
 /// Column geometry shared by the table header and the rows.
 class AccountCols {
   static const double status = 112;
   static const int emailFlex = 3;
   static const int passwordFlex = 2;
-  static const int keyFlex = 3;
+  static const int keyFlex = 2;
   static const double login = 224;
+  static const int uploadFlex = 2;
   static const int notesFlex = 2;
   static const double actions = 84;
   static const double gap = 12;
   static const EdgeInsets padding = EdgeInsets.symmetric(horizontal: 18);
+
+  /// Below this width the table scrolls sideways instead of squeezing.
+  static const double minTableWidth = 1120;
 }
 
-/// One editable account row. Email / password / MEGA key / notes are inline
-/// text fields; every edit is reported through [onFieldChanged] (column name
-/// in snake_case) and saved to Supabase by the page.
+/// One editable account row. Email / password / MEGA key / upload folder URL
+/// are inline text fields, notes open a bigger editor; every edit is reported
+/// through [onFieldChanged] (column name in snake_case) and saved to Supabase
+/// by the page.
 class AccountRow extends StatefulWidget {
   const AccountRow({
     super.key,
@@ -31,6 +38,8 @@ class AccountRow extends StatefulWidget {
     required this.onFieldChanged,
     required this.onCheck,
     required this.onDelete,
+    required this.onOpenUpload,
+    this.checkTooltip = 'Check this account now',
   });
 
   final Account account;
@@ -41,8 +50,12 @@ class AccountRow extends StatefulWidget {
   final bool enabled;
 
   final void Function(String column, String value) onFieldChanged;
-  final VoidCallback onCheck;
+
+  /// Null when this build can't run checks (web).
+  final VoidCallback? onCheck;
+  final String checkTooltip;
   final VoidCallback onDelete;
+  final void Function(Uri uri) onOpenUpload;
 
   @override
   State<AccountRow> createState() => _AccountRowState();
@@ -52,11 +65,13 @@ class _AccountRowState extends State<AccountRow> {
   late final _email = TextEditingController(text: widget.account.email);
   late final _pass = TextEditingController(text: widget.account.password);
   late final _key = TextEditingController(text: widget.account.megaKey);
-  late final _notes = TextEditingController(text: widget.account.notes);
+  late final _upload = TextEditingController(
+    text: widget.account.uploadFolderUrl,
+  );
   final _emailF = FocusNode();
   final _passF = FocusNode();
   final _keyF = FocusNode();
-  final _notesF = FocusNode();
+  final _uploadF = FocusNode();
   bool _hover = false;
 
   @override
@@ -71,15 +86,15 @@ class _AccountRowState extends State<AccountRow> {
     sync(_email, _emailF, widget.account.email);
     sync(_pass, _passF, widget.account.password);
     sync(_key, _keyF, widget.account.megaKey);
-    sync(_notes, _notesF, widget.account.notes);
+    sync(_upload, _uploadF, widget.account.uploadFolderUrl);
   }
 
   @override
   void dispose() {
-    for (final c in [_email, _pass, _key, _notes]) {
+    for (final c in [_email, _pass, _key, _upload]) {
       c.dispose();
     }
-    for (final f in [_emailF, _passF, _keyF, _notesF]) {
+    for (final f in [_emailF, _passF, _keyF, _uploadF]) {
       f.dispose();
     }
     super.dispose();
@@ -153,17 +168,9 @@ class _AccountRowState extends State<AccountRow> {
             const SizedBox(width: AccountCols.gap),
             SizedBox(width: AccountCols.login, child: _loginCell(a)),
             const SizedBox(width: AccountCols.gap),
-            Expanded(
-              flex: AccountCols.notesFlex,
-              child: _field(
-                controller: _notes,
-                focus: _notesF,
-                column: 'notes',
-                hint: 'notes',
-                style: AppTheme.caption.copyWith(color: AppTheme.textPrimary),
-                onChanged: (v) => a.notes = v,
-              ),
-            ),
+            Expanded(flex: AccountCols.uploadFlex, child: _uploadCell(a)),
+            const SizedBox(width: AccountCols.gap),
+            Expanded(flex: AccountCols.notesFlex, child: _notesCell(a)),
             const SizedBox(width: AccountCols.gap),
             SizedBox(
               width: AccountCols.actions,
@@ -171,7 +178,7 @@ class _AccountRowState extends State<AccountRow> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   _iconAction(
-                    tooltip: 'Check this account now',
+                    tooltip: widget.checkTooltip,
                     icon: Icons.play_arrow_rounded,
                     color: AppTheme.megaBlueSoft,
                     tint: AppTheme.megaBlue,
@@ -202,20 +209,124 @@ class _AccountRowState extends State<AccountRow> {
     required TextStyle style,
     required void Function(String) onChanged,
     bool obscure = false,
+    TextInputType? keyboardType,
   }) {
     return TextField(
       controller: controller,
       focusNode: focus,
       enabled: widget.enabled,
       obscureText: obscure,
+      keyboardType: keyboardType,
       style: style,
       decoration: InputDecoration(hintText: hint),
       onChanged: (v) {
         onChanged(v);
         widget.onFieldChanged(column, v);
-        if (column == 'mega_key') setState(() {}); // toggles obscuring
+        // MEGA key: toggles obscuring. Upload URL: enables the open button.
+        if (column == 'mega_key' || column == 'upload_folder_url') {
+          setState(() {});
+        }
       },
     );
+  }
+
+  /// Upload folder link + a button that opens it in the browser. The button
+  /// stays usable during a check run (only the text is read-only then).
+  Widget _uploadCell(Account a) {
+    final uri = Links.webUri(_upload.text);
+    return Row(
+      children: [
+        Expanded(
+          child: _field(
+            controller: _upload,
+            focus: _uploadF,
+            column: 'upload_folder_url',
+            hint: 'paste upload link…',
+            keyboardType: TextInputType.url,
+            style: AppTheme.caption.copyWith(
+              color: AppTheme.textPrimary,
+              fontSize: 12,
+            ),
+            onChanged: (v) => a.uploadFolderUrl = v.trim(),
+          ),
+        ),
+        const SizedBox(width: 4),
+        _iconAction(
+          tooltip: uri == null
+              ? 'Paste an upload folder link to open it here'
+              : 'Open upload folder in the browser',
+          icon: Icons.open_in_new_rounded,
+          size: 16,
+          color: AppTheme.megaBlueSoft,
+          onPressed: uri == null ? null : () => widget.onOpenUpload(uri),
+        ),
+      ],
+    );
+  }
+
+  /// One-line preview of the notes; click to edit them in a big dialog.
+  Widget _notesCell(Account a) {
+    final text = a.notes.trim();
+    final preview = text.replaceAll(RegExp(r'\s*\n+\s*'), '  ·  ');
+    final cell = Material(
+      color: AppTheme.bgBase,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        side: const BorderSide(color: AppTheme.hairline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: widget.enabled ? () => _editNotes(a) : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  text.isEmpty ? 'notes' : preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.isEmpty
+                      ? const TextStyle(
+                          fontFamily: AppTheme.font,
+                          color: AppTheme.textMuted,
+                          fontSize: 13,
+                        )
+                      : AppTheme.caption.copyWith(color: AppTheme.textPrimary),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.edit_note_rounded,
+                size: 17,
+                color: widget.enabled
+                    ? AppTheme.textMuted
+                    : AppTheme.stateHover,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return Semantics(
+      button: true,
+      label: 'Edit notes',
+      child: Tooltip(
+        message: text.isEmpty
+            ? 'Add notes'
+            : (text.length > 600 ? '${text.substring(0, 600)}…' : text),
+        child: cell,
+      ),
+    );
+  }
+
+  Future<void> _editNotes(Account a) async {
+    final onChanged = widget.onFieldChanged; // still valid if the row is gone
+    final v = await showNotesDialog(context, email: a.email, notes: a.notes);
+    if (v == null || v == a.notes) return;
+    a.notes = v;
+    onChanged('notes', v);
+    if (mounted) setState(() {});
   }
 
   Widget _statusBadge(Account a) {
@@ -315,7 +426,7 @@ class _AccountRowState extends State<AccountRow> {
       message: last == null
           ? 'No successful login recorded yet'
           : 'Last successful login: ${Fmt.dateTime(last)}'
-                '${storage == null ? '' : '\nStorage: ${Fmt.bytes(storage.usedBytes)} used of ${Fmt.bytes(storage.totalBytes)}'}',
+                '${storage == null ? '' : '\nStorage: ${Fmt.bytes(storage.usedBytes)} used of ${Fmt.bytes(storage.totalBytes)} · ${Fmt.bytes(storage.freeBytes)} free'}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -329,13 +440,14 @@ class _AccountRowState extends State<AccountRow> {
     required IconData icon,
     required Color color,
     required VoidCallback? onPressed,
+    double size = 19,
     Color? tint,
     Color? hoverColor,
   }) {
     return IconButton(
       tooltip: tooltip,
       onPressed: onPressed,
-      icon: Icon(icon, size: 19),
+      icon: Icon(icon, size: size),
       style: ButtonStyle(
         padding: const WidgetStatePropertyAll(EdgeInsets.zero),
         fixedSize: const WidgetStatePropertyAll(Size.square(34)),

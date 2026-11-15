@@ -1,25 +1,45 @@
-# MEGA Keep-Alive (Flutter · macOS)
+# MEGA Keep-Alive (Flutter · macOS · Windows · Web)
 
-A macOS desktop app that keeps your MEGA accounts active. It logs in to each
-account, reads its **storage** (used / total), and saves the **last login
-time** in your own **Supabase** (PostgreSQL) database.
+A desktop app (macOS and Windows) that keeps your MEGA accounts active. It logs
+in to each account, reads its **storage** (used / total), and saves the **last
+login time** in your own **Supabase** (PostgreSQL) database. A **web version**
+(same code, same database) lets you manage the list and open upload folders
+from any browser.
 
 - **Supabase database** (Free plan): accounts, MEGA keys, last login and
   storage are stored there, protected by Row Level Security and your sign-in
 - **Paste list**: paste many `email:password` lines at once (also `,` `;`
   tab or space)
 - **Check all accounts** logs in one by one (10–25 s apart) through
-  **MEGAcmd**; or check a single account with ▶
+  **MEGAcmd**; **Recheck failed** retries only the accounts that failed; or
+  check a single account with ▶
 - **Last login + storage** per account, plus total storage across all accounts
+- **Sort** by status, email, last login or **used storage**
 - **MEGA key** field per account, typed in by hand
+- **Upload folder URL** per account: paste a MEGA upload-folder link, then
+  open it in the browser and upload straight into that account (no login)
+- **Notes** open in a large editor
 - Inline editing with **auto-save** (and a Retry if you're offline)
-- **Import CSV** (bring in your old list) and **Export CSV** (a local backup)
+- **Import CSV** (bring in your old list) and **Export CSV** (a local backup
+  with storage in bytes **and** in GB, plus a TOTAL row)
 - **shared_preferences** remembers your Supabase connection, sign-in session,
   sort order and the show/hide-passwords toggle
 - **MEGA theme**: black canvas, MEGA Red actions, indigo accents, Lexend font
 
 > **First time?** Set up Supabase first → **[SUPABASE_SETUP.md](SUPABASE_SETUP.md)**
 > (about 10 minutes, once).
+>
+> **Building for Windows or the web?** → **[BUILD.md](BUILD.md)** (macOS,
+> Windows and web, step by step).
+>
+> **Will it use up the Supabase Free plan?** No → **[SUPABASE_USAGE.md](SUPABASE_USAGE.md)**
+> (numbers for 40 accounts).
+
+| | macOS app | Windows app | Web (browser) |
+|---|---|---|---|
+| Manage accounts, notes, upload folders, CSV | ✅ | ✅ | ✅ |
+| Check accounts (MEGAcmd) | ✅ | ✅ | ❌ browsers can't run MEGAcmd |
+| Build with | `./build.sh` | `build_windows.bat` | `./build_web.sh` |
 
 ---
 
@@ -121,14 +141,17 @@ app).
 | Action | What it does |
 |---|---|
 | **Check all accounts** | Logs in to every account one by one through MEGAcmd (random 10–25 s pause between accounts). **Stop** halts after the current one. |
+| **Recheck failed (N)** | Same, but only for the N accounts whose last check failed. |
 | ▶ on a row | Checks just that account. |
-| **Add account** | One account: email, password, optional MEGA key and notes. |
+| **Add account** | One account: email, password, optional MEGA key, upload folder URL and notes. |
 | **Paste list** | Many accounts at once, one per line: `email:password`, `email,password`, `email;password`, `email<tab>password` or `email password`. Shows how many are new, already known, or skipped before saving. Optionally updates passwords of known emails. |
-| **Import CSV** | Header row with `email,password` (optional `notes`, `mega_key`). Only adds emails that aren't in your list yet. Your old `email,password,notes` CSV works. |
-| **Export CSV** | Saves a backup (`email,password,mega_key,notes,last_login_at,last_status,storage_used_bytes,storage_total_bytes`). Keep it private. |
+| **Import CSV** | Header row with `email,password` (optional `notes`, `mega_key`, `upload_folder_url`). Only adds emails that aren't in your list yet. Your old `email,password,notes` CSV works. |
+| **Export CSV** | Saves a backup: `email, password, mega_key, notes, upload_folder_url, last_login_at, last_status, storage_used_bytes, storage_total_bytes, storage_used_gb, storage_unused_gb`, then a **TOTAL** row adding up storage across accounts. GB = 1024³ bytes, like MEGA. Import skips the TOTAL row. Keep the file private. On the web it downloads instead. |
 | ⟳ | Reloads from Supabase. |
-| Column headers | Click **STATUS**, **EMAIL** or **LAST LOGIN** to sort (asc → desc → off). Sort by last login to find accounts you haven't logged in to for a while. |
-| Inline cells | Edit email, password, **MEGA key** or notes directly in the table. Changes save automatically; the footer shows *All changes saved* / *Not saved — Retry*. |
+| Column headers | Click **STATUS**, **EMAIL**, **LAST LOGIN** or **STORAGE** to sort (asc → desc → off). Sort by last login to find accounts you haven't logged in to for a while; sort by storage (used space) to find the emptiest or fullest accounts. Accounts never measured stay at the bottom. |
+| **Upload folder** cell | Paste a MEGA upload-folder link (e.g. `https://mega.nz/filerequest/…`). The ↗ button next to it opens it in your browser so you can upload without logging in. |
+| **Notes** cell | Click it to edit the notes in a large editor (⌘/Ctrl+Enter saves). Hover to read long notes. |
+| Inline cells | Edit email, password, **MEGA key** or upload folder URL directly in the table. Changes save automatically; the footer shows *All changes saved* / *Not saved — Retry*. |
 | **Show passwords & keys** | Reveals passwords and MEGA keys (remembered between launches). |
 
 What each check stores in Supabase:
@@ -139,6 +162,7 @@ What each check stores in Supabase:
 | `last_checked_at` | time of the last attempt |
 | `last_status` / `last_error` | `ok` or `failed`, plus the reason |
 | `storage_used_bytes` / `storage_total_bytes` | from `mega-df`, read right after logging in |
+| `upload_folder_url` | the upload folder link you pasted (not touched by checks) |
 
 > MEGA never says whether the **email** or the **password** was wrong
 > (anti-enumeration), so a failure reads "Wrong email or password".
@@ -154,6 +178,7 @@ What each check stores in Supabase:
 | Build error about *macOS deployment target … 10.15* | Already fixed in this branch (target is 12.0). Run `flutter clean && flutter pub get`. |
 | Release build: *does not contain architectures "arm64 x86_64"* | Xcode 27 `lipo` issue. Keep `EXCLUDED_ARCHS = x86_64` in `macos/Runner/Configs/Release.xcconfig` (already set). |
 | *Table "mega_accounts" not found* | Run `supabase/schema.sql` in the Supabase SQL Editor ([setup step 2](SUPABASE_SETUP.md#2-create-the-table-run-the-sql-once)). |
+| *No "upload_folder_url" column yet* | Your table predates that column: re-run `supabase/schema.sql` ([Updating](SUPABASE_SETUP.md#updating-an-existing-project)). |
 | *Supabase rejected the publishable key* | Re-copy it from **Project Settings → API Keys**; use the header's server icon to fix it. |
 | *Wrong email or password for your Supabase user* | That's the Supabase user, not MEGA. Check it in **Authentication → Users**, or reset its password there. |
 | *This Supabase user is not confirmed yet* | Recreate the user with **Auto Confirm User** ticked, or confirm it in the dashboard. |
@@ -161,7 +186,8 @@ What each check stores in Supabase:
 | Every MEGA check fails *MEGAcmd not installed* | `brew install --cask megacmd`, open MEGAcmd once, restart the app. |
 | Login OK but storage shows "—" | Run `mega-login you@x.com 'pw' && mega-df; mega-logout` in Terminal to see what MEGAcmd prints. |
 | App won't open on another Mac | **System Settings → Privacy & Security → Open Anyway**. |
-| Start over locally (forget URL/key/session) | `defaults delete com.megakeepalive.megaKeepalive` |
+| Start over locally (forget URL/key/session) | macOS: `defaults delete com.megakeepalive.megaKeepalive`. Windows: delete `%APPDATA%\com.megakeepalive\mega-checker-app\`. Web: clear the site's data in the browser. |
+| Windows or web problems | See [BUILD.md](BUILD.md). |
 
 ---
 
@@ -172,15 +198,20 @@ lib/
   main.dart                  app start, Supabase init, setup → sign-in → home
   app_theme.dart             MEGA design tokens + Material theme
   models.dart                Account, StorageInfo, LoginResult
-  mega_service.dart          MEGAcmd: login → whoami → df (storage) → ls → logout
+  mega_service.dart          a check: login → whoami → df (storage) → ls → logout
+  platform/                  desktop-only code (MEGAcmd on macOS / Windows,
+                             Finder / Explorer) + a stub for the web build
   accounts_repository.dart   Supabase table access + friendly error messages
   account_import.dart        "Paste list" parser + import merge plan
-  csv_import.dart            CSV import / export (native macOS file dialogs)
+  csv_import.dart            CSV import / export (file_selector dialogs)
+  links.dart                 opens upload folder links in the browser
   prefs.dart                 shared_preferences wrapper
   format.dart                bytes / date formatting
   screens/                   setup, sign-in, home (accounts table)
-  widgets/                   account row, dialogs, badges, logo, form bits
-supabase/schema.sql          table + Row Level Security (run once)
+  widgets/                   account row, dialogs (incl. notes), badges, logo
+macos/  windows/  web/       platform shells (web/: favicon, robots.txt, llms.txt)
+supabase/schema.sql          table + Row Level Security (run once, re-run to update)
+tool/generate_icons.swift    draws every app icon + favicon from the "M" logo
 assets/fonts/                Lexend (SIL Open Font License)
 ```
 

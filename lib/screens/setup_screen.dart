@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
@@ -105,7 +106,8 @@ class _SetupScreenState extends State<SetupScreen> {
       title: 'Connect to Supabase',
       subtitle:
           'Your MEGA accounts are stored in your own Supabase database. '
-          'Paste your project\'s details once — they\'re saved on this Mac.',
+          'Paste your project\'s details once — they\'re saved '
+          '${kIsWeb ? 'in this browser' : 'on this computer'}.',
       footer: const Text(
         'Where to find these: Supabase dashboard → your project → '
         'Project Settings → Data API (URL) and API Keys (publishable key).\n'

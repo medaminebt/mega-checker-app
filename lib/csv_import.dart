@@ -1,41 +1,72 @@
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:csv/csv.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'models.dart';
 
+/// A CSV file chosen in the open dialog.
+class PickedCsv {
+  const PickedCsv(this.name, this.text);
+
+  /// File name only (no folder), for messages.
+  final String name;
+  final String text;
+}
+
 /// CSV import (to bring accounts into Supabase) and export (a local backup).
-/// No native plugin: the file dialogs are the macOS native ones driven through
-/// `osascript`; parsing/writing uses the pure-Dart `csv` package.
+///
+/// The dialogs come from `file_selector`: native Finder / Explorer panels on
+/// desktop, the browser's file picker on the web. On the web, Export starts a
+/// download instead of asking where to save.
 class CsvImport {
+  static const _csvTypes = XTypeGroup(
+    label: 'CSV',
+    extensions: ['csv', 'txt'],
+    mimeTypes: ['text/csv', 'text/plain'],
+    uniformTypeIdentifiers: [
+      'public.comma-separated-values-text',
+      'public.plain-text',
+    ],
+  );
+
+  static const defaultExportName = 'mega_accounts.csv';
+
   // ---- pick / save dialogs ----------------------------------------------
 
-  /// Native "open file" dialog. Returns the chosen path, or null if cancelled.
-  static Future<String?> pickCsvFile() async {
-    const script =
-        'POSIX path of (choose file with prompt "Select your accounts CSV" '
-        'of type {"csv", "public.comma-separated-values-text", "public.text"})';
-    final res = await Process.run('osascript', ['-e', script]);
-    if (res.exitCode != 0) return null;
-    final path = res.stdout.toString().trim();
-    return path.isEmpty ? null : path;
+  /// Open dialog. Returns the chosen file's name and text, or null if
+  /// cancelled.
+  static Future<PickedCsv?> pickCsv() async {
+    final file = await openFile(
+      acceptedTypeGroups: const [_csvTypes],
+      confirmButtonText: 'Import',
+    );
+    if (file == null) return null;
+    return PickedCsv(file.name, await file.readAsString());
   }
 
-  /// Native "save file" dialog for Export. Returns the chosen path, or null.
-  static Future<String?> pickSaveCsvFile() async {
-    const script =
-        'POSIX path of (choose file name with prompt "Export accounts CSV" '
-        'default name "mega_accounts.csv")';
-    final res = await Process.run('osascript', ['-e', script]);
-    if (res.exitCode != 0) return null;
-    final path = res.stdout.toString().trim();
-    return path.isEmpty ? null : path;
+  /// Save dialog + write. Returns the saved file's path (desktop) or the
+  /// downloaded file's name (web), or null if cancelled.
+  static Future<String?> saveCsv(List<Account> rows) async {
+    final location = await getSaveLocation(
+      acceptedTypeGroups: const [_csvTypes],
+      suggestedName: defaultExportName,
+      confirmButtonText: 'Export',
+    );
+    if (location == null) return null;
+    var path = location.path;
+    if (!kIsWeb && !path.toLowerCase().endsWith('.csv')) path = '$path.csv';
+    final file = XFile.fromData(
+      utf8.encode(toCsvString(rows)),
+      mimeType: 'text/csv',
+      name: defaultExportName,
+    );
+    await file.saveTo(path); // web: ignores the path and downloads the file
+    return kIsWeb ? defaultExportName : path;
   }
 
   // ---- read --------------------------------------------------------------
-
-  static List<Account> parseFile(String path) =>
-      parseString(File(path).readAsStringSync());
 
   static const _keyHeaders = [
     'mega_key',
@@ -45,9 +76,22 @@ class CsvImport {
     'recovery key',
   ];
 
+  static const _uploadHeaders = [
+    'upload_folder_url',
+    'upload folder url',
+    'upload_folder',
+    'upload folder',
+    'upload_url',
+    'upload url',
+    'upload_link',
+    'upload link',
+    'file_request',
+    'file request',
+  ];
+
   /// Parse CSV text whose header row contains at least `email` and `password`
-  /// (also recognises `notes` and `mega_key`). Rows missing email or password
-  /// are skipped.
+  /// (also recognises `notes`, `mega_key` and `upload_folder_url`). Rows
+  /// missing email or password are skipped.
   static List<Account> parseString(String text) {
     var normalised = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     // Strip a UTF-8 BOM (Excel / Numbers add one) so the first header matches.
@@ -60,10 +104,11 @@ class CsvImport {
         .map((e) => e.toString().trim().toLowerCase())
         .toList();
     int col(String name) => header.indexOf(name);
+    int firstCol(List<String> names) =>
+        names.map(col).firstWhere((i) => i >= 0, orElse: () => -1);
     final iEmail = col('email'), iPass = col('password'), iNotes = col('notes');
-    final iKey = _keyHeaders
-        .map(col)
-        .firstWhere((i) => i >= 0, orElse: () => -1);
+    final iKey = firstCol(_keyHeaders);
+    final iUpload = firstCol(_uploadHeaders);
     if (iEmail < 0 || iPass < 0) {
       throw const FormatException(
         'CSV needs "email" and "password" columns in the header row.',
@@ -78,7 +123,7 @@ class CsvImport {
       final pass = cell(iPass);
       if (email.isEmpty || pass.isEmpty) continue;
       // Skip rows whose "email" isn't an email — guards against stray prose /
-      // junk lines that happen to contain commas.
+      // junk lines that happen to contain commas (and the export's TOTAL row).
       if (!email.contains('@')) continue;
       out.add(
         Account(
@@ -86,6 +131,7 @@ class CsvImport {
           password: pass,
           megaKey: cell(iKey),
           notes: cell(iNotes),
+          uploadFolderUrl: cell(iUpload),
         ),
       );
     }
@@ -94,36 +140,68 @@ class CsvImport {
 
   // ---- write -------------------------------------------------------------
 
+  static const _bytesPerGb = 1024 * 1024 * 1024;
+
+  /// Bytes → GB with 2 decimals, binary units (1 GB = 1024³ bytes) like MEGA,
+  /// so a free account's quota reads 20.00. Plain number (no unit, `.`
+  /// decimal point) so spreadsheets can add the column up.
+  static String gb(int bytes) => (bytes / _bytesPerGb).toStringAsFixed(2);
+
+  static const exportHeader = [
+    'email',
+    'password',
+    'mega_key',
+    'notes',
+    'upload_folder_url',
+    'last_login_at',
+    'last_status',
+    'storage_used_bytes',
+    'storage_total_bytes',
+    'storage_used_gb',
+    'storage_unused_gb',
+  ];
+
+  /// One row per account, then a TOTAL row adding up storage across the
+  /// accounts that have been measured. (Import skips the TOTAL row.)
   static String toCsvString(List<Account> rows) {
     String ts(DateTime? d) => d == null ? '' : d.toUtc().toIso8601String();
-    final data = <List<String>>[
-      [
-        'email',
-        'password',
-        'mega_key',
-        'notes',
-        'last_login_at',
-        'last_status',
-        'storage_used_bytes',
-        'storage_total_bytes',
-      ],
-      for (final r in rows)
-        [
-          r.email,
-          r.password,
-          r.megaKey,
-          r.notes,
-          ts(r.lastLoginAt),
-          r.lastStatus ?? '',
-          r.storageUsedBytes?.toString() ?? '',
-          r.storageTotalBytes?.toString() ?? '',
-        ],
-    ];
+    var used = 0, total = 0, free = 0, measured = 0;
+    final data = <List<String>>[exportHeader];
+    for (final r in rows) {
+      final s = r.storage;
+      if (s != null) {
+        used += s.usedBytes;
+        total += s.totalBytes;
+        free += s.freeBytes;
+        measured++;
+      }
+      data.add([
+        r.email,
+        r.password,
+        r.megaKey,
+        r.notes,
+        r.uploadFolderUrl,
+        ts(r.lastLoginAt),
+        r.lastStatus ?? '',
+        r.storageUsedBytes?.toString() ?? '',
+        r.storageTotalBytes?.toString() ?? '',
+        s == null ? '' : gb(s.usedBytes),
+        s == null ? '' : gb(s.freeBytes),
+      ]);
+    }
+    data.add([
+      'TOTAL',
+      '',
+      '',
+      '$measured of ${rows.length} accounts measured',
+      '',
+      '',
+      '',
+      '$used',
+      '$total',
+      gb(used),
+      gb(free),
+    ]);
     return Csv(lineDelimiter: '\n').encode(data);
-  }
-
-  /// Write a backup copy of the accounts to a CSV file.
-  static void exportToFile(String path, List<Account> rows) {
-    File(path).writeAsStringSync(toCsvString(rows), flush: true);
   }
 }

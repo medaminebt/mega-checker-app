@@ -34,6 +34,23 @@ void main() {
     expect(a[0].email, 'real@x.com');
   });
 
+  test('upload_folder_url column is recognised', () {
+    for (final h in [
+      'upload_folder_url',
+      'Upload Folder URL',
+      'file_request',
+    ]) {
+      final a = CsvImport.parseString(
+        'email,password,$h\na@x.com,pw,https://mega.nz/filerequest/q\n',
+      );
+      expect(
+        a.single.uploadFolderUrl,
+        'https://mega.nz/filerequest/q',
+        reason: 'header "$h"',
+      );
+    }
+  });
+
   test('parse without required columns throws', () {
     expect(
       () => CsvImport.parseString('foo,bar\n1,2\n'),
@@ -58,16 +75,60 @@ void main() {
     final text = CsvImport.toCsvString(rows);
     expect(
       text.split('\n').first,
-      'email,password,mega_key,notes,last_login_at,last_status,'
-      'storage_used_bytes,storage_total_bytes',
+      'email,password,mega_key,notes,upload_folder_url,last_login_at,'
+      'last_status,storage_used_bytes,storage_total_bytes,storage_used_gb,'
+      'storage_unused_gb',
     );
     expect(text, contains('2026-11-15T10:00:00.000Z'));
     expect(text, contains('21474836480'));
 
+    // The TOTAL row at the end is skipped on import.
     final back = CsvImport.parseString(text);
     expect(back.length, 2);
     expect(back[0].megaKey, 'abc-def');
     expect(back[1].password, 'p,2'); // comma survives the round-trip
     expect(back[1].notes, 'note, with comma');
+  });
+
+  test('export adds used / unused GB per account and a TOTAL row', () {
+    const gib = 1024 * 1024 * 1024;
+    final rows = [
+      Account(
+        email: 'a@x.com',
+        password: 'p',
+        uploadFolderUrl: 'https://mega.nz/filerequest/a',
+        storageUsedBytes: 1610612736, // 1.5 GB
+        storageTotalBytes: 20 * gib,
+      ),
+      Account(
+        email: 'over@x.com',
+        password: 'p',
+        storageUsedBytes: 25 * gib, // over quota → 0 unused
+        storageTotalBytes: 20 * gib,
+      ),
+      Account(email: 'never@x.com', password: 'p'), // never measured
+    ];
+    final lines = CsvImport.toCsvString(rows).split('\n');
+    expect(lines.length, 5); // header + 3 accounts + TOTAL
+
+    final header = lines.first.split(',');
+    List<String> row(int i) => lines[i].split(',');
+    String cell(int line, String column) => row(line)[header.indexOf(column)];
+
+    expect(cell(1, 'storage_used_bytes'), '1610612736'); // unchanged
+    expect(cell(1, 'storage_total_bytes'), '${20 * gib}'); // unchanged
+    expect(cell(1, 'storage_used_gb'), '1.50');
+    expect(cell(1, 'storage_unused_gb'), '18.50');
+    expect(cell(1, 'upload_folder_url'), 'https://mega.nz/filerequest/a');
+    expect(cell(2, 'storage_used_gb'), '25.00');
+    expect(cell(2, 'storage_unused_gb'), '0.00');
+    expect(cell(3, 'storage_used_gb'), '');
+    expect(cell(3, 'storage_unused_gb'), '');
+
+    expect(cell(4, 'email'), 'TOTAL');
+    expect(cell(4, 'notes'), '2 of 3 accounts measured');
+    expect(cell(4, 'storage_used_gb'), '26.50');
+    expect(cell(4, 'storage_unused_gb'), '18.50');
+    expect(cell(4, 'storage_total_bytes'), '${40 * gib}');
   });
 }

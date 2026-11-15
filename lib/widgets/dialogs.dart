@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../account_import.dart';
 import '../app_theme.dart';
+import '../links.dart';
 import '../models.dart';
 import 'form_bits.dart';
 
@@ -88,6 +91,7 @@ class _AddAccountDialogState extends State<AddAccountDialog> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _key = TextEditingController();
+  final _upload = TextEditingController();
   final _notes = TextEditingController();
   bool _obscure = true;
   String? _error;
@@ -97,6 +101,7 @@ class _AddAccountDialogState extends State<AddAccountDialog> {
     _email.dispose();
     _password.dispose();
     _key.dispose();
+    _upload.dispose();
     _notes.dispose();
     super.dispose();
   }
@@ -115,12 +120,22 @@ class _AddAccountDialogState extends State<AddAccountDialog> {
       setState(() => _error = 'Enter the MEGA password.');
       return;
     }
+    final upload = _upload.text.trim();
+    if (upload.isNotEmpty && Links.webUri(upload) == null) {
+      setState(
+        () => _error =
+            'The upload folder URL should be a web link, e.g. '
+            'https://mega.nz/filerequest/…',
+      );
+      return;
+    }
     Navigator.pop(
       context,
       Account(
         email: email,
         password: _password.text,
         megaKey: _key.text.trim(),
+        uploadFolderUrl: upload,
         notes: _notes.text.trim(),
       ),
     );
@@ -185,11 +200,28 @@ class _AddAccountDialogState extends State<AddAccountDialog> {
             onSubmitted: (_) => _submit(),
           ),
           const SizedBox(height: 16),
+          const FieldLabel('Upload folder URL (optional)'),
+          TextField(
+            controller: _upload,
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(
+              hintText: 'https://mega.nz/filerequest/…',
+              prefixIcon: Icon(Icons.drive_folder_upload_rounded, size: 18),
+            ),
+            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: 16),
           const FieldLabel('Notes (optional)'),
           TextField(
             controller: _notes,
-            decoration: const InputDecoration(hintText: 'e.g. backup account'),
-            onSubmitted: (_) => _submit(),
+            minLines: 3,
+            maxLines: 6,
+            keyboardType: TextInputType.multiline,
+            style: AppTheme.body.copyWith(fontSize: 13.5),
+            decoration: const InputDecoration(
+              hintText: 'e.g. backup account',
+              contentPadding: EdgeInsets.all(12),
+            ),
           ),
           if (_error != null) ...[
             const SizedBox(height: 16),
@@ -384,6 +416,112 @@ class _PasteListDialogState extends State<PasteListDialog> {
 }
 
 // ---------------------------------------------------------------------------
+// Edit the notes of one account
+// ---------------------------------------------------------------------------
+
+/// Big multi-line editor for an account's notes. Returns the new text, or
+/// null when cancelled.
+Future<String?> showNotesDialog(
+  BuildContext context, {
+  required String email,
+  required String notes,
+}) => showDialog<String>(
+  context: context,
+  builder: (_) => NotesDialog(email: email, initial: notes),
+);
+
+class NotesDialog extends StatefulWidget {
+  const NotesDialog({super.key, required this.email, required this.initial});
+
+  final String email;
+  final String initial;
+
+  @override
+  State<NotesDialog> createState() => _NotesDialogState();
+}
+
+class _NotesDialogState extends State<NotesDialog> {
+  late final _text = TextEditingController(text: widget.initial);
+
+  @override
+  void initState() {
+    super.initState();
+    _text.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _save() => Navigator.pop(context, _text.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    final apple =
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    final changed = _text.text.trim() != widget.initial.trim();
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter, meta: true): _save,
+        const SingleActivator(LogicalKeyboardKey.enter, control: true): _save,
+      },
+      child: MegaDialog(
+        icon: Icons.edit_note_rounded,
+        title: 'Notes',
+        width: 620,
+        actions: [
+          OutlinedButton(
+            style: AppTheme.ghostButton,
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: changed ? _save : null,
+            icon: const Icon(Icons.check_rounded, size: 18),
+            label: const Text('Save notes'),
+          ),
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              widget.email,
+              overflow: TextOverflow.ellipsis,
+              style: AppTheme.bodySecondary,
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _text,
+              autofocus: true,
+              minLines: 10,
+              maxLines: 14,
+              keyboardType: TextInputType.multiline,
+              style: AppTheme.body.copyWith(height: 1.5),
+              decoration: const InputDecoration(
+                hintText:
+                    'Anything worth remembering about this account — what '
+                    'you store there, recovery hints, renewal dates…',
+                contentPadding: EdgeInsets.all(14),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${_text.text.length} characters  ·  '
+              '${apple ? '⌘' : 'Ctrl'}+Enter to save',
+              textAlign: TextAlign.right,
+              style: AppTheme.caption.copyWith(fontSize: 11.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Confirm delete
 // ---------------------------------------------------------------------------
 
@@ -408,7 +546,7 @@ Future<bool> confirmDelete(BuildContext context, Account a) async {
       ],
       child: Text(
         '“${a.email}” will be removed from your Supabase database, including '
-        'its password, MEGA key and login history.',
+        'its password, MEGA key, upload folder URL, notes and login history.',
         style: AppTheme.bodySecondary,
       ),
     ),

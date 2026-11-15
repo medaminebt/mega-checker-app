@@ -84,7 +84,8 @@ class _AppGateState extends State<AppGate> {
     await Supabase.initialize(
       url: url,
       publishableKey: key,
-      // No OAuth / magic links → no deep-link handling needed on desktop.
+      // No OAuth / magic links → nothing to read from deep links or the
+      // browser's address bar.
       authOptions: const FlutterAuthClientOptions(detectSessionInUri: false),
       debug: false,
     );

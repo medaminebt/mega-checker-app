@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mega_keepalive/format.dart';
+import 'package:mega_keepalive/links.dart';
 import 'package:mega_keepalive/mega_service.dart';
 import 'package:mega_keepalive/models.dart';
 import 'package:mega_keepalive/screens/setup_screen.dart';
@@ -38,6 +39,21 @@ Total size taken up by file versions:            0
       expect(MegaService.parseDfOutput(''), isNull);
     });
 
+    test('Windows line endings (MEGAclient.exe) parse the same', () {
+      const out =
+          'Cloud drive:  5242880 in  3 file(s)\r\n'
+          'USED STORAGE:  5242880   0.02% of 21474836480\r\n';
+      expect(
+        MegaService.parseDfOutput(out),
+        const StorageInfo(5242880, 21474836480),
+      );
+    });
+
+    test('free space is total − used, never negative (over quota)', () {
+      expect(const StorageInfo(5, 20).freeBytes, 15);
+      expect(const StorageInfo(25, 20).freeBytes, 0);
+    });
+
     test('empty account with NaN percent still parses', () {
       const out = 'USED STORAGE:                    0         ----% of 0\n';
       expect(MegaService.parseDfOutput(out), const StorageInfo(0, 0));
@@ -72,6 +88,27 @@ Total size taken up by file versions:            0
         Fmt.ago(now.subtract(const Duration(days: 95)), now: now),
         '3 mo ago',
       );
+    });
+  });
+
+  group('Links.webUri (upload folder URLs)', () {
+    test('accepts http(s) links, keeps the #key fragment', () {
+      expect(
+        Links.webUri(' https://mega.nz/folder/AbC#KeY ').toString(),
+        'https://mega.nz/folder/AbC#KeY',
+      );
+      expect(
+        Links.webUri('mega.nz/filerequest/xyz').toString(),
+        'https://mega.nz/filerequest/xyz',
+      );
+    });
+
+    test('rejects empty text, other schemes and non-hosts', () {
+      expect(Links.webUri(''), isNull);
+      expect(Links.webUri('   '), isNull);
+      expect(Links.webUri('javascript:alert(1)'), isNull);
+      expect(Links.webUri('file:///etc/passwd'), isNull);
+      expect(Links.webUri('just some words'), isNull);
     });
   });
 

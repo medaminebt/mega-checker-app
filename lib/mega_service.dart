@@ -1,86 +1,24 @@
-import 'dart:io';
-
 import 'models.dart';
+import 'platform/native.dart';
 
 /// Drives MEGAcmd to test an account: logout (clean slate) → login → touch the
 /// account (whoami + df + ls) so activity registers and storage is read →
 /// logout. Returns a classified result; the caller stores it in Supabase.
+///
+/// Desktop only (macOS, Windows). In the web build [isSupported] is false and
+/// the UI disables the check buttons.
 class MegaService {
-  // Where the mega-* tools usually live on an Apple-Silicon Mac. The app may be
-  // launched from Finder with a minimal PATH, so we check explicit paths first.
-  static const List<String> _searchDirs = [
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    '/Applications/MEGAcmd.app/Contents/MacOS',
-  ];
-
   static final _emailRe = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
-  static String? _resolve(String cmd) {
-    for (final d in _searchDirs) {
-      final p = '$d/$cmd';
-      if (File(p).existsSync()) return p;
-    }
-    try {
-      final w = Process.runSync('which', [cmd]);
-      if (w.exitCode == 0) {
-        final p = w.stdout.toString().trim();
-        if (p.isNotEmpty) return p;
-      }
-    } catch (_) {}
-    return null;
-  }
+  /// Test-only hook: when set, [keepAlive] returns this instead of touching
+  /// MEGAcmd or the network.
+  static Future<LoginResult> Function(Account)? overrideKeepAlive;
 
-  static bool get isInstalled => _resolve('mega-login') != null;
+  /// Whether this build can run checks at all (false in a browser).
+  static bool get isSupported =>
+      overrideKeepAlive != null || MegaCmd.isSupported;
 
-  /// PATH that includes the MEGAcmd dirs. Crucial when the app is launched from
-  /// Finder: that gives a minimal PATH, and `mega-login` would otherwise fail to
-  /// find/start its background server (`mega-cmd-server`) and just hang.
-  static String get _augmentedPath {
-    final existing = Platform.environment['PATH'] ?? '/usr/bin:/bin';
-    return '${_searchDirs.join(':')}:$existing';
-  }
-
-  static Future<ProcessResult?> _run(
-    String cmd,
-    List<String> args, {
-    int timeoutSec = 90,
-  }) async {
-    final exe = _resolve(cmd);
-    if (exe == null) return null;
-    try {
-      return await Process.run(
-        exe,
-        args,
-        environment: {'PATH': _augmentedPath},
-      ).timeout(Duration(seconds: timeoutSec));
-    } catch (e) {
-      return ProcessResult(0, -1, '', e.toString());
-    }
-  }
-
-  static bool _serverReady = false;
-
-  /// Start the MEGAcmd background server once, **detached**, so it doesn't
-  /// inherit the pipes of a later Process.run() (which is what makes the first
-  /// login hang when the app is launched from Finder). Subsequent commands then
-  /// just connect to the already-running server and return promptly.
-  static Future<void> _ensureServer() async {
-    if (_serverReady) return;
-    final exe = _resolve('mega-whoami');
-    if (exe == null) return;
-    try {
-      await Process.start(
-        exe,
-        [],
-        mode: ProcessStartMode.detached,
-        environment: {'PATH': _augmentedPath},
-      );
-      // Give the server a moment to come up on first launch.
-      await Future.delayed(const Duration(seconds: 3));
-    } catch (_) {}
-    _serverReady = true;
-  }
+  static bool get isInstalled => MegaCmd.isInstalled;
 
   static String _lastMeaningfulLine(String s) {
     final lines = s
@@ -90,10 +28,6 @@ class MegaService {
         .toList();
     return lines.isEmpty ? 'unknown error' : lines.last;
   }
-
-  /// Test-only hook: when set, [keepAlive] returns this instead of touching
-  /// MEGAcmd or the network.
-  static Future<LoginResult> Function(Account)? overrideKeepAlive;
 
   /// Test one account's login and refresh its activity.
   static Future<LoginResult> keepAlive(Account acct) async {
@@ -108,37 +42,35 @@ class MegaService {
         'invalid email address format',
       );
     }
-    if (!isInstalled) {
-      return LoginResult(
-        LoginOutcome.megacmdMissing,
-        'MEGAcmd not found — install with: brew install --cask megacmd',
-      );
+    if (!MegaCmd.isSupported) {
+      return LoginResult(LoginOutcome.unsupported, MegaCmd.installHint);
+    }
+    if (!MegaCmd.isInstalled) {
+      return LoginResult(LoginOutcome.megacmdMissing, MegaCmd.installHint);
     }
 
     // Make sure the background server is up (detached) before we pipe commands.
-    await _ensureServer();
+    await MegaCmd.ensureServer();
 
     // Start from a clean state (also clears any "already logged in" error).
-    await _run('mega-logout', [], timeoutSec: 30);
+    await MegaCmd.run('logout', [], timeoutSec: 30);
 
-    final res = await _run('mega-login', [email, acct.password]);
+    final res = await MegaCmd.run('login', [email, acct.password]);
     if (res == null) {
       return LoginResult(LoginOutcome.error, 'MEGAcmd disappeared mid-run');
     }
 
-    final out = '${res.stdout}\n${res.stderr}';
+    final out = res.output;
     final lower = out.toLowerCase();
 
     if (res.exitCode == 0 && !lower.contains('login failed')) {
       // Read-only actions that unambiguously count as activity. `df` also
       // gives us the account's used / total storage.
-      await _run('mega-whoami', []);
-      final df = await _run('mega-df', [], timeoutSec: 60);
-      final storage = df == null
-          ? null
-          : parseDfOutput('${df.stdout}\n${df.stderr}');
-      await _run('mega-ls', ['/']);
-      await _run('mega-logout', [], timeoutSec: 60);
+      await MegaCmd.run('whoami', []);
+      final df = await MegaCmd.run('df', [], timeoutSec: 60);
+      final storage = df == null ? null : parseDfOutput(df.output);
+      await MegaCmd.run('ls', ['/']);
+      await MegaCmd.run('logout', [], timeoutSec: 60);
       return LoginResult(
         LoginOutcome.success,
         'logged in successfully',
@@ -148,7 +80,7 @@ class MegaService {
 
     // Failed: classify, clean up any partial session.
     final detail = _lastMeaningfulLine(out);
-    await _run('mega-logout', [], timeoutSec: 60);
+    await MegaCmd.run('logout', [], timeoutSec: 60);
 
     if (lower.contains('email or password')) {
       return LoginResult(LoginOutcome.wrongCredentials, detail);
@@ -176,7 +108,8 @@ class MegaService {
   /// Parse the output of `mega-df` into used / total bytes. Returns null when
   /// the output doesn't contain the `USED STORAGE` line (e.g. not logged in).
   static StorageInfo? parseDfOutput(String output) {
-    final m = _dfRe.firstMatch(output);
+    final normalised = output.replaceAll('\r\n', '\n'); // Windows line endings
+    final m = _dfRe.firstMatch(normalised);
     if (m == null) return null;
     final total = int.tryParse(m.group(3)!);
     if (total == null) return null;

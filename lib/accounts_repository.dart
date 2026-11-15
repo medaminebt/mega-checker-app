@@ -79,6 +79,11 @@ String describeError(Object e) {
       return 'Table "mega_accounts" not found — run supabase/schema.sql in the '
           'Supabase SQL Editor (see SUPABASE_SETUP.md).';
     }
+    if (e.code == 'PGRST204' && msg.contains('upload_folder_url')) {
+      return 'Your Supabase table has no "upload_folder_url" column yet — run '
+          'supabase/schema.sql again in the SQL Editor (see '
+          'SUPABASE_SETUP.md, "Updating").';
+    }
     if (e.code == '23505') {
       return 'That email is already in your list.';
     }
