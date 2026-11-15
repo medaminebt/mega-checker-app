@@ -428,10 +428,29 @@ Widget _home(MemoryAccountsRepository repo, {bool desktop = true}) => HomePage(
   security: desktop ? _SampleSecurity() : null,
 );
 
+/// Made-up secret (RFC 4648 example text), not a real account.
+const _sampleTotp = TotpSetup(
+  factorId: 'sample',
+  uri:
+      'otpauth://totp/mega-checker-app:me%40example.com'
+      '?secret=JBSWY3DPEHPK3PXP&issuer=mega-checker-app',
+  secret: 'JBSWY3DPEHPK3PXP',
+);
+
 /// Stand-in for the app gate's security settings (nothing is stored).
 class _SampleSecurity implements SecurityController {
   @override
+  bool get twoFactorOn => true;
+  @override
   String get twoFactorSummary => 'On · authenticator app';
+  @override
+  Future<TotpSetup> startTwoFactor() async => _sampleTotp;
+  @override
+  Future<String?> confirmTwoFactor(String factorId, String code) async => null;
+  @override
+  Future<void> cancelTwoFactor(String factorId) async {}
+  @override
+  Future<String?> turnOffTwoFactor(String code) async => null;
   @override
   Future<String?> changeMasterPassword(String current, String next) async =>
       null;
@@ -617,27 +636,22 @@ void main() {
   });
   _shot('two-factor', (tester) async {
     await _prefs();
-    const size = Size(1100, 900);
+    // Security › Turn on 2FA, over the account list.
+    final repo = MemoryAccountsRepository(_sampleAccounts());
     await _show(
       tester,
-      _MacWindow.outer(size),
-      _MacWindow(
-        size: size,
-        child: _materialApp(
-          MfaEnrolScreen(
-            // Made-up secret (RFC 4648 example text), not a real account.
-            onStart: () async => const TotpSetup(
-              factorId: 'sample',
-              uri:
-                  'otpauth://totp/mega-checker-app:me%40example.com'
-                  '?secret=JBSWY3DPEHPK3PXP&issuer=mega-checker-app',
-              secret: 'JBSWY3DPEHPK3PXP',
-            ),
-            onVerify: (_, _) async => null,
-            onSignOut: () {},
-            email: 'me@example.com',
-          ),
-          size,
+      _MacWindow.outer(desktop),
+      _MacWindow(size: desktop, child: _materialApp(_home(repo), desktop)),
+    );
+    await tester.pumpAndSettle();
+    final ctx = tester.element(find.byType(HomePage));
+    unawaited(
+      showDialog<bool>(
+        context: ctx,
+        barrierDismissible: false,
+        builder: (_) => MfaEnrolDialog(
+          onStart: () async => _sampleTotp,
+          onVerify: (_, _) async => null,
         ),
       ),
     );

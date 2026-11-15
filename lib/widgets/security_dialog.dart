@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import '../screens/mfa_screens.dart';
 import '../screens/vault_screens.dart';
 import '../security/security_controller.dart';
 import 'dialogs.dart';
@@ -12,7 +13,7 @@ Future<void> showSecurityDialog(BuildContext context, SecurityController c) =>
       builder: (_) => SecurityDialog(controller: c),
     );
 
-/// Header shield button: 2FA status, master password, recovery key,
+/// Header shield button: 2FA on / off, master password, recovery key,
 /// remember-on-this-computer (desktop), sign out on browser close (web).
 class SecurityDialog extends StatefulWidget {
   const SecurityDialog({super.key, required this.controller});
@@ -63,6 +64,38 @@ class _SecurityDialogState extends State<SecurityDialog> {
               : 'Forgotten. You will type the master password next time.'),
       error: err != null,
     );
+  }
+
+  Future<void> _turnOnTwoFactor() async {
+    final on = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => MfaEnrolDialog(
+        onStart: c.startTwoFactor,
+        onVerify: c.confirmTwoFactor,
+        onCancel: c.cancelTwoFactor,
+      ),
+    );
+    if (!mounted) return;
+    setState(() {}); // status line
+    if (on == true) {
+      _say(
+        '2FA is on. From now on, signing in asks for a code from your '
+        'authenticator app after your password.',
+      );
+    }
+  }
+
+  Future<void> _turnOffTwoFactor() async {
+    final off = await showDialog<bool>(
+      context: context,
+      builder: (_) => MfaTurnOffDialog(onTurnOff: c.turnOffTwoFactor),
+    );
+    if (!mounted) return;
+    setState(() {});
+    if (off == true) {
+      _say('2FA is off. Signing in needs only your password.');
+    }
   }
 
   Future<void> _changePassword() async {
@@ -176,11 +209,34 @@ class _SecurityDialogState extends State<SecurityDialog> {
           _section('Two-step sign-in (2FA)', Icons.verified_user_rounded, [
             Text(c.twoFactorSummary, style: AppTheme.body),
             const SizedBox(height: 4),
-            const Text(
-              'Lost your phone? In Supabase open Authentication › Users › '
-              'your user, delete the MFA factor, then sign in again to set up '
-              'a new one.',
+            Text(
+              c.twoFactorOn
+                  ? 'Signing in asks for a 6-digit code from your '
+                        'authenticator app after your password. Lost your '
+                        'phone? In Supabase open Authentication › Users › your '
+                        'user and delete the MFA factor.'
+                  : 'Optional. Turn it on and signing in also asks for a '
+                        '6-digit code from an authenticator app on your '
+                        'phone, so a stolen password alone opens nothing.',
               style: AppTheme.caption,
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: c.twoFactorOn
+                  ? OutlinedButton.icon(
+                      onPressed: _busy ? null : _turnOffTwoFactor,
+                      icon: const Icon(
+                        Icons.remove_moderator_rounded,
+                        size: 18,
+                      ),
+                      label: const Text('Turn off 2FA'),
+                    )
+                  : ElevatedButton.icon(
+                      onPressed: _busy ? null : _turnOnTwoFactor,
+                      icon: const Icon(Icons.verified_user_rounded, size: 18),
+                      label: const Text('Turn on 2FA'),
+                    ),
             ),
           ]),
           _section('Master password', Icons.lock_rounded, [

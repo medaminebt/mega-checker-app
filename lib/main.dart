@@ -82,8 +82,8 @@ class _Message implements Exception {
 /// Decides which screen to show:
 ///   no Supabase config        → [SetupScreen]
 ///   not signed in             → [SignInScreen]
-///   2FA not set up            → [MfaEnrolScreen]
-///   2FA code not entered yet  → [MfaChallengeScreen]
+///   2FA on, code not entered  → [MfaChallengeScreen]
+///   (2FA is optional: it is turned on and off in the Security dialog)
 ///   no master password yet    → [VaultSetupScreen]
 ///   vault locked              → [UnlockScreen]
 ///   otherwise                 → [HomePage]
@@ -256,7 +256,7 @@ class _AppGateState extends State<AppGate> implements SecurityController {
     if (mounted) setState(() {});
   }
 
-  // ---- two-step sign-in (TOTP) ---------------------------------------------
+  // ---- two-step sign-in (TOTP, optional) -----------------------------------
 
   Factor? get _verifiedTotp => _session?.user.factors
       ?.where(
@@ -297,11 +297,40 @@ class _AppGateState extends State<AppGate> implements SecurityController {
   Future<String?> _verifyEnrol(String factorId, String code) async {
     try {
       await _client.auth.mfa.challengeAndVerify(factorId: factorId, code: code);
-      if (mounted) setState(() => _session = _client.auth.currentSession);
+      await _refreshFactors();
       return null;
     } catch (e) {
       return describeError(e);
     }
+  }
+
+  /// Reloads the user (and so the list of 2FA factors) from Supabase.
+  Future<void> _refreshFactors() async {
+    try {
+      await _client.auth.mfa.listFactors(); // refreshes the session
+    } catch (_) {
+      // Offline: keep what the session already says.
+    }
+    if (mounted) setState(() => _session = _client.auth.currentSession);
+  }
+
+  /// Signed in with only the password: check that 2FA wasn't turned on
+  /// (maybe on another computer) since this session started. The database
+  /// would then hide every row, and the vault would look missing.
+  Future<bool> _codeNowNeeded() async {
+    final mfa = _client.auth.mfa;
+    if (mfa.getAuthenticatorAssuranceLevel().currentLevel ==
+        AuthenticatorAssuranceLevels.aal2) {
+      return false;
+    }
+    try {
+      await mfa.listFactors(); // refreshes the session and its factors
+    } catch (_) {
+      return false; // offline: loading the vault reports it
+    }
+    final aal = mfa.getAuthenticatorAssuranceLevel();
+    return aal.currentLevel != AuthenticatorAssuranceLevels.aal2 &&
+        aal.nextLevel == AuthenticatorAssuranceLevels.aal2;
   }
 
   Future<String?> _verifyCode(String code) async {
@@ -311,7 +340,11 @@ class _AppGateState extends State<AppGate> implements SecurityController {
         final list = await _client.auth.mfa.listFactors();
         factor = list.totp.firstOrNull;
       }
-      if (factor == null) return 'No authenticator app is set up.';
+      if (factor == null) {
+        // 2FA was turned off on another device: nothing to enter.
+        if (mounted) setState(() => _session = _client.auth.currentSession);
+        return null;
+      }
       await _client.auth.mfa.challengeAndVerify(
         factorId: factor.id,
         code: code,
@@ -349,6 +382,16 @@ class _AppGateState extends State<AppGate> implements SecurityController {
       setState(() => _vault = _Vault.loading);
     }
     try {
+      if (await _codeNowNeeded()) {
+        if (!mounted || user != _vaultUser) return;
+        // Show the code prompt; the vault loads again once it's entered.
+        setState(() {
+          _session = _client.auth.currentSession;
+          _clearVault();
+        });
+        return;
+      }
+      if (!mounted || user != _vaultUser) return;
       final rec = await _vaultStore.fetch();
       if (!mounted || user != _vaultUser) return;
       if (rec == null) {
@@ -499,11 +542,50 @@ class _AppGateState extends State<AppGate> implements SecurityController {
   // ---- SecurityController (Security & Scheduled checks dialogs) ------------
 
   @override
+  bool get twoFactorOn => _verifiedTotp != null;
+
+  @override
   String get twoFactorSummary {
     final f = _verifiedTotp;
     return f == null
         ? 'Off'
         : 'On · authenticator app, added ${Fmt.dateTime(f.createdAt)}';
+  }
+
+  @override
+  Future<TotpSetup> startTwoFactor() => _startEnrol();
+
+  @override
+  Future<String?> confirmTwoFactor(String factorId, String code) =>
+      _verifyEnrol(factorId, code);
+
+  @override
+  Future<void> cancelTwoFactor(String factorId) async {
+    try {
+      await _client.auth.mfa.unenroll(factorId);
+    } catch (_) {
+      // Left unverified; the next "Turn on 2FA" clears it.
+    }
+  }
+
+  @override
+  Future<String?> turnOffTwoFactor(String code) async {
+    try {
+      await _refreshFactors();
+      final factor = _verifiedTotp;
+      if (factor == null) return null; // already off (another device)
+      // Prove the phone is at hand, then remove the factor. Supabase also
+      // refuses to remove it from a session that skipped the code.
+      await _client.auth.mfa.challengeAndVerify(
+        factorId: factor.id,
+        code: code,
+      );
+      await _client.auth.mfa.unenroll(factor.id);
+      await _refreshFactors();
+      return null;
+    } catch (e) {
+      return describeError(e);
+    }
   }
 
   @override
@@ -605,23 +687,17 @@ class _AppGateState extends State<AppGate> implements SecurityController {
     }
     final email = session.user.email;
 
+    // 2FA is optional: only accounts with an authenticator app set up get
+    // the code prompt. Everyone else goes straight on.
     final aal = _client.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aal.currentLevel != AuthenticatorAssuranceLevels.aal2) {
-      if (aal.nextLevel == AuthenticatorAssuranceLevels.aal2) {
-        _noteWaiting('the 2FA code');
-        return MfaChallengeScreen(
-          onVerify: _verifyCode,
-          onSignOut: _signOut,
-          email: email,
-          waitingForScheduledCheck: widget.scheduledRun,
-        );
-      }
-      _noteWaiting('2FA is not set up');
-      return MfaEnrolScreen(
-        onStart: _startEnrol,
-        onVerify: _verifyEnrol,
+    if (aal.currentLevel != AuthenticatorAssuranceLevels.aal2 &&
+        aal.nextLevel == AuthenticatorAssuranceLevels.aal2) {
+      _noteWaiting('the 2FA code');
+      return MfaChallengeScreen(
+        onVerify: _verifyCode,
         onSignOut: _signOut,
         email: email,
+        waitingForScheduledCheck: widget.scheduledRun,
       );
     }
 

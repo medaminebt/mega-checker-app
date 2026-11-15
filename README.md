@@ -82,10 +82,10 @@ browser.
 <tr>
 <td valign="top">
 
-### 🔐 Encrypted, with 2FA
+### 🔐 Encrypted, with optional 2FA
 A **master password** encrypts MEGA passwords and keys on your device
-(AES-256-GCM), so Supabase only stores ciphertext. Signing in needs a
-6-digit code from an **authenticator app**.
+(AES-256-GCM), so Supabase only stores ciphertext. Turn on **2FA** and
+signing in also asks for a 6-digit code from an **authenticator app**.
 
 </td>
 <td valign="top">
@@ -192,18 +192,20 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 3. **Get the app:** [download it](#download), or build it yourself
    ([BUILD.md](BUILD.md)).
 4. **First launch:** paste your Supabase **Project URL** and **publishable
-   key** → **Sign in** → scan the QR code with an authenticator app (2FA) →
-   choose a **master password** and save the **recovery key** →
-   **Paste list** → **Check all accounts**.
-5. **Optional:** 📅 in the header → **Scheduled checks** → weekly, monthly or
+   key** → **Sign in** → choose a **master password** and save the
+   **recovery key** → **Paste list** → **Check all accounts**.
+5. **Optional:** 🛡 in the header → **Turn on 2FA** → scan the QR code with
+   an authenticator app. From then on, signing in asks for a 6-digit code
+   after your password.
+6. **Optional:** 📅 in the header → **Scheduled checks** → weekly, monthly or
    a date → **Save schedule**.
 
 > **Updating from an older version?** Re-run
 > [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor
 > first (it adds the encryption table, the 2FA rules and two columns), and
-> update the app on every computer you use: once 2FA is on, older copies can't
-> read the table any more. Your existing passwords are encrypted automatically
-> the first time you unlock.
+> update the app on every computer you use: once you turn 2FA on, older copies
+> can't read the table any more. Your existing passwords are encrypted
+> automatically the first time you unlock.
 
 ---
 
@@ -225,7 +227,7 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 | Inline cells | Edit email, password, MEGA key or upload URL right in the table. Saves automatically; the footer shows *All changes saved* or *Not saved — Retry*. |
 | **Show passwords & keys** | Reveals passwords and MEGA keys (remembered between launches). |
 | 📅 **Scheduled checks** (desktop) | Weekly (day + time), monthly (day 1–28 + time) or once on a date. Saving installs it in launchd (macOS) or Task Scheduler (Windows); **Test now** runs it immediately; *How it works, and doing it by hand* shows the exact commands to install, check and remove it yourself, and where the log is. |
-| 🛡 **Security** | 2FA status, **Change master password**, **New recovery key**, **Remember on this Mac / PC** (needed for scheduled checks), and on the web **Sign out when I close the browser**. |
+| 🛡 **Security** | **Turn on 2FA** / **Turn off 2FA** (optional; turning it off asks for a current code), **Change master password**, **New recovery key**, **Remember on this Mac / PC** (needed for scheduled checks), and on the web **Sign out when I close the browser**. |
 | ⟳ / sign-out icon | Reload from Supabase / sign out (asks first; also forgets a remembered master password). |
 
 <details>
@@ -256,9 +258,10 @@ can't be checked yet ([ideas.md](ideas.md#b-better-checks-reuses-the-login-that-
   500 MB database and 3–13 MB of the 5 GB monthly download allowance (under
   0.3 %). The one thing to watch is that free projects pause after a week of
   no use → [SUPABASE_USAGE.md](SUPABASE_USAGE.md).
-- **Security:** two-step sign-in (TOTP), passwords and MEGA keys encrypted
-  with your master password before they leave the device, Row Level Security
-  that also demands the 2FA code, nothing secret built into the apps, and a
+- **Security:** optional two-step sign-in (TOTP), passwords and MEGA keys
+  encrypted with your master password before they leave the device, Row
+  Level Security that also demands the 2FA code once you've turned 2FA on,
+  nothing secret built into the apps, and a
   web version that tells search engines and AI crawlers to stay away.
   Details and the remaining weak spots →
   [ideas.md › security](ideas.md#2-is-the-web-version-secure-with-the-login).
@@ -286,9 +289,9 @@ Step-by-step setup for each platform → **[BUILD.md](BUILD.md)**.
 |---|---|
 | *Table "mega_accounts" not found* | Run `supabase/schema.sql` in the Supabase SQL Editor ([setup step 2](SUPABASE_SETUP.md#2-create-the-table-run-the-sql-once)). |
 | *Table "mega_vault" not found* or *missing a column* | Your database predates this version: re-run `supabase/schema.sql` ([Updating](SUPABASE_SETUP.md#updating-an-existing-project)). |
-| Lost the phone with the authenticator app | Supabase → **Authentication › Users** → your user → delete the MFA factor. Sign in again and set up 2FA on the new phone. |
+| Lost the phone with the authenticator app | Supabase → **Authentication › Users** → your user → delete the MFA factor. Sign in with just your password, then 🛡 → **Turn on 2FA** with the new phone. |
 | Forgot the master password | **Forgot it? Use the recovery key** on the unlock screen, then choose a new one. Lost both? **Lost both?** erases the stored passwords and keys (everything else stays) so you can start again with Paste list. |
-| An older copy of the app shows an empty list | After 2FA is on, the database answers only 2FA-verified sessions. Update that copy. |
+| An older copy of the app shows an empty list | Once 2FA is on, the database answers only 2FA-verified sessions. Update that copy. |
 | Scheduled check didn't run | 📅 → check the list under *For it to work* and *Recent scheduled checks*. The computer must be on and you logged in; the app must stay signed in with **Remember** on. Log: `~/Library/Application Support/mega-checker-app/scheduled-checks.log` (macOS) or `%APPDATA%\mega-checker-app\scheduled-checks.log` (Windows). |
 | Scheduled check opened a window and waited | It needed you (signed out, 2FA code, or master password not remembered). Sign in / unlock and it continues, then closes. |
 | *Supabase rejected the publishable key* | Re-copy it from **Project Settings › API Keys**, then fix it with the server icon in the header. |
@@ -314,7 +317,8 @@ Step-by-step setup for each platform → **[BUILD.md](BUILD.md)**.
 ```
 lib/
   main.dart                  app start (--scheduled-check), Supabase init,
-                             setup → sign-in → 2FA → master password → home
+                             setup → sign-in → 2FA code (if on) → master
+                             password → home
   app_theme.dart             MEGA design tokens + Material theme
   models.dart                Account, StorageInfo, LoginResult
   mega_service.dart          a check: login → whoami → df (storage, bin,

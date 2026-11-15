@@ -152,14 +152,14 @@ revoke all on table public.mega_vault from anon;
 grant select, insert, update, delete on table public.mega_vault to authenticated;
 
 -- -----------------------------------------------------------------------------
--- Two-factor sign-in (2FA). The app makes you add an authenticator app the
--- first time you sign in. From then on these RESTRICTIVE policies refuse every
--- read and write unless the session also passed the 6-digit code ("aal2"),
--- so a stolen Supabase password alone gets nothing.
+-- Two-factor sign-in (2FA) is optional: you turn it on in the app's Security
+-- dialog by adding an authenticator app. From then on these RESTRICTIVE
+-- policies refuse every read and write unless the session also passed the
+-- 6-digit code ("aal2"), so a stolen Supabase password alone gets nothing.
 --
--- Users without a verified 2FA factor are not blocked (that's how the app
--- can let you set 2FA up). Supabase itself refuses to remove a verified
--- factor, or add another one, without a 2FA-verified session.
+-- Users without a verified 2FA factor are not blocked (2FA off, or not set
+-- up yet). Supabase itself refuses to remove a verified factor, or add
+-- another one, without a 2FA-verified session.
 --
 -- Stricter alternative (blocks users who never set up 2FA, too): make the
 -- function below return  coalesce((select auth.jwt() ->> 'aal'), '') = 'aal2'

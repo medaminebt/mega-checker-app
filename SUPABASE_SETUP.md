@@ -50,8 +50,8 @@ What the script does:
   protects your MEGA passwords (see [Security notes](#security-notes)),
 - turns on **Row Level Security** so a signed-in user can only read and write
   **their own** rows,
-- adds a **2FA rule** (a *restrictive* policy): once you've set up an
-  authenticator app, both tables answer only sessions that also passed the
+- adds a **2FA rule** (a *restrictive* policy): 2FA is optional, but once
+  you've turned it on, both tables answer only sessions that also passed the
   6-digit code (`aal2`), so your Supabase password alone gets nothing,
 - removes all access for anonymous requests (the publishable key alone can't
   read anything).
@@ -111,7 +111,8 @@ This just closes the door completely.)
 
 **Authentication → Multi-Factor** (on some dashboards: *Sign In / Providers
 → Multi-Factor*) → **TOTP (App Authenticator)** should be **Enabled**. It's
-free on every plan. The app uses it to make signing in need a 6-digit code.
+free on every plan. 2FA is optional in the app; this only matters if you
+turn it on (🛡 **Security → Turn on 2FA**).
 
 ## 7. Connect the app
 
@@ -121,22 +122,22 @@ free on every plan. The app uses it to make signing in need a 6-digit code.
    saves them on this computer (or in this browser, for the web version), so
    you only do this once per device.
 3. **Sign in** with the user from step 3.
-4. **Turn on two-step sign-in**: scan the QR code with an authenticator app
-   on your phone (Google Authenticator, Microsoft Authenticator, 1Password,
-   Bitwarden…) and type the 6-digit code. From now on every sign-in asks for
-   a code.
-5. **Set a master password** and **save the recovery key** it shows (password
+4. **Set a master password** and **save the recovery key** it shows (password
    manager, or on paper). The master password encrypts your MEGA passwords
    and keys on your device; Supabase never sees it. On a Mac or PC you can
    tick **Remember on this Mac / PC** so the app opens without it (scheduled
    checks need this).
-6. Click **Paste list** and paste your MEGA accounts, one per line:
+5. Click **Paste list** and paste your MEGA accounts, one per line:
 
    ```
    first@gmail.com:Password1
    second@gmail.com,Password2
    third@outlook.com Password3
    ```
+6. **Optional, recommended:** 🛡 in the header → **Turn on 2FA** → scan the
+   QR code with an authenticator app on your phone and type the 6-digit code.
+   From then on every sign-in asks for a code after your password (see
+   [Security notes](#security-notes)).
 
 You're done. Open **Table Editor → mega_accounts** in Supabase any time to see
 the raw data.
@@ -168,10 +169,14 @@ the raw data.
   the master password and the recovery key, nobody can decrypt the stored
   passwords; the unlock screen's **Lost both?** erases them so you can start
   again (emails, notes and history stay).
-- **2FA:** with an authenticator app set up, a stolen Supabase password isn't
-  enough to sign in, and the database itself refuses sessions without the
-  code. Lost the phone? Delete the factor in **Authentication → Users → your
-  user**, then sign in and set it up again.
+- **2FA (optional, recommended):** 🛡 **Security → Turn on 2FA**, scan the
+  QR code with an authenticator app (Google Authenticator, Microsoft
+  Authenticator, 1Password, Bitwarden…) and type the 6-digit code. From then
+  on every sign-in asks for a code after the password, a stolen Supabase
+  password isn't enough, and the database itself refuses sessions without
+  the code. **Turn off 2FA** asks for a current code. Lost the phone? Delete
+  the factor in **Authentication → Users → your user**, then sign in with
+  just your password and turn it on again.
 - **Remember on this Mac / PC** keeps the data key in the macOS Keychain or a
   DPAPI-encrypted file on Windows. Anything running as your user account on
   that computer could read it, so only tick it on your own computer. Signing

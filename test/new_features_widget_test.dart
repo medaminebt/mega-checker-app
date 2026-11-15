@@ -20,11 +20,39 @@ import 'support/memory_repository.dart';
 Widget _wrap(Widget child) => MaterialApp(theme: AppTheme.theme(), home: child);
 
 class _FakeSecurity implements SecurityController {
+  _FakeSecurity({this.twoFactorOn = true});
+
   bool remembered = false;
   String? changed;
+  String? cancelled;
 
   @override
-  String get twoFactorSummary => 'On · authenticator app, added 2026-11-15';
+  bool twoFactorOn;
+  @override
+  String get twoFactorSummary =>
+      twoFactorOn ? 'On · authenticator app, added 2026-11-15' : 'Off';
+  @override
+  Future<TotpSetup> startTwoFactor() async => const TotpSetup(
+    factorId: 'f1',
+    uri: 'otpauth://totp/mega-checker-app:me?secret=JBSWY3DPEHPK3PXP',
+    secret: 'JBSWY3DPEHPK3PXP',
+  );
+  @override
+  Future<String?> confirmTwoFactor(String factorId, String code) async {
+    if (code != '123456') return "That code didn't work.";
+    twoFactorOn = true;
+    return null;
+  }
+
+  @override
+  Future<void> cancelTwoFactor(String factorId) async => cancelled = factorId;
+  @override
+  Future<String?> turnOffTwoFactor(String code) async {
+    if (code != '123456') return "That code didn't work.";
+    twoFactorOn = false;
+    return null;
+  }
+
   @override
   Future<String?> changeMasterPassword(String current, String next) async {
     if (current != 'old password!') {
@@ -478,32 +506,86 @@ void main() {
       expect(find.text("That code didn't work."), findsOneWidget);
     });
 
-    testWidgets('enrolment shows the QR code and setup key, then verifies', (
+    testWidgets('2FA is optional: Security dialog turns it on with a code', (
       tester,
     ) async {
-      String? verified;
+      final sec = _FakeSecurity(twoFactorOn: false);
       await tester.pumpWidget(
-        _wrap(
-          MfaEnrolScreen(
-            onStart: () async => const TotpSetup(
-              factorId: 'f1',
-              uri: 'otpauth://totp/mega-checker-app:me?secret=JBSWY3DPEHPK3PXP',
-              secret: 'JBSWY3DPEHPK3PXP',
-            ),
-            onVerify: (id, c) async {
-              verified = '$id:$c';
-              return null;
-            },
-            onSignOut: () {},
-          ),
-        ),
+        _wrap(HomePage(repository: MemoryAccountsRepository(), security: sec)),
       );
       await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      expect(find.text('JBSW Y3DP EHPK 3PXP'), findsOneWidget);
-      await tester.enterText(find.byType(TextField), '654321');
+      await tester.tap(find.byTooltip('Security: 2FA, master password'));
       await tester.pumpAndSettle();
-      expect(verified, 'f1:654321');
+      expect(find.text('Off'), findsOneWidget);
+      expect(find.text('Turn off 2FA'), findsNothing);
+
+      await tester.tap(find.text('Turn on 2FA'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Turn on two-step sign-in'), findsOneWidget);
+      expect(find.text('JBSW Y3DP EHPK 3PXP'), findsOneWidget);
+
+      // A wrong code keeps the dialog open; six digits submit by themselves.
+      await tester.enterText(find.byType(TextField).last, '000000');
+      await tester.pumpAndSettle();
+      expect(find.text("That code didn't work."), findsOneWidget);
+      expect(sec.twoFactorOn, isFalse);
+
+      await tester.enterText(find.byType(TextField).last, '123456');
+      await tester.pumpAndSettle();
+      expect(sec.twoFactorOn, isTrue);
+      expect(find.text('Turn on two-step sign-in'), findsNothing);
+      expect(find.textContaining('2FA is on.'), findsOneWidget);
+      expect(
+        find.text('On · authenticator app, added 2026-11-15'),
+        findsOneWidget,
+      );
+      expect(find.text('Turn off 2FA'), findsOneWidget);
+    });
+
+    testWidgets('closing the 2FA setup drops the unfinished factor', (
+      tester,
+    ) async {
+      final sec = _FakeSecurity(twoFactorOn: false);
+      await tester.pumpWidget(
+        _wrap(HomePage(repository: MemoryAccountsRepository(), security: sec)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Security: 2FA, master password'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Turn on 2FA'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel'));
+      await tester.pumpAndSettle();
+      expect(sec.cancelled, 'f1');
+      expect(sec.twoFactorOn, isFalse);
+      expect(find.text('Turn on 2FA'), findsOneWidget);
+    });
+
+    testWidgets('turning 2FA off asks for a code first', (tester) async {
+      final sec = _FakeSecurity();
+      await tester.pumpWidget(
+        _wrap(HomePage(repository: MemoryAccountsRepository(), security: sec)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Security: 2FA, master password'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Turn off 2FA'));
+      await tester.pumpAndSettle();
+      expect(find.text('Turn off two-step sign-in?'), findsOneWidget);
+
+      // No auto-submit here: six digits alone do nothing.
+      await tester.enterText(find.byType(TextField).last, '123456');
+      await tester.pumpAndSettle();
+      expect(sec.twoFactorOn, isTrue);
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Turn off 2FA'));
+      await tester.pumpAndSettle();
+      expect(sec.twoFactorOn, isFalse);
+      expect(find.text('Turn off two-step sign-in?'), findsNothing);
+      expect(find.textContaining('2FA is off.'), findsOneWidget);
+      expect(find.text('Off'), findsOneWidget);
+      expect(find.text('Turn on 2FA'), findsOneWidget);
     });
   });
 

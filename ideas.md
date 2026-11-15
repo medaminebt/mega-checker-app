@@ -9,7 +9,8 @@ app's code, and the sources at the end.
 2FA sign-in, **A2** encrypted passwords and MEGA keys, **A3** sign out when
 the browser closes, **B2** Rubbish Bin / versions sizes (with the **C1**
 clean-up actions behind an *Are you sure?*), and **B7** scheduled checks.
-They're marked ✅ below.
+They're marked ✅ below. In v1.1.0, 2FA became **optional**: you sign in
+with just the password until you turn it on in 🛡 Security.
 
 - [1. Do upload folder URLs work in the web version?](#1-do-upload-folder-urls-work-in-the-web-version)
   - [Can I make the file requests from the MEGA desktop app, and will the column fill itself?](#can-i-make-the-file-requests-from-the-mega-desktop-app-and-will-the-column-fill-itself)
@@ -97,7 +98,7 @@ only ever send `enc1:…` ciphertext for passwords and MEGA keys.
 | Layer | What it does |
 |---|---|
 | **Supabase sign-in** | Every request needs your Supabase user's session. Without signing in, nothing can be read. |
-| ✅ **Two-step sign-in (A1)** | After the password, the app asks for a 6-digit code from an authenticator app (Supabase TOTP). A *restrictive* Row Level Security policy makes the database itself refuse sessions that skipped the code (`aal2`), and Supabase won't remove or add a factor without one. |
+| ✅ **Two-step sign-in (A1, optional)** | Turn it on in 🛡 Security → **Turn on 2FA**. From then on, after the password the app asks for a 6-digit code from an authenticator app (Supabase TOTP). A *restrictive* Row Level Security policy makes the database itself refuse sessions that skipped the code (`aal2`), and Supabase won't remove or add a factor without one. **Turn off 2FA** asks for a current code. |
 | ✅ **Encrypted passwords and MEGA keys (A2)** | The app encrypts them with AES-256-GCM before saving. The key comes from your master password (PBKDF2-SHA256, 600 000 rounds), wrapped so a recovery key also opens it. Supabase stores ciphertext only; the master password never leaves the device, and on the web it's never stored. |
 | ✅ **Sign out when the browser closes (A3)** | A checkbox on the sign-in screen (and in 🛡 Security) keeps the session in `sessionStorage`, which the browser clears when the tab or browser closes. |
 | **Row Level Security** (`supabase/schema.sql`) | The database itself only returns rows whose `user_id` is the signed-in user. The anonymous role has **no access at all**, so the publishable key alone is useless. |
@@ -113,9 +114,10 @@ is just another client of it.
 
 ### Weak spots (honest list)
 
-1. ~~No 2FA on the app's sign-in.~~ ✅ Fixed (A1). Keep the authenticator app
+1. ~~No 2FA on the app's sign-in.~~ ✅ Fixed (A1), but it's optional: it
+   only protects you once you **turn it on**. Keep the authenticator app
    safe; if you lose it, delete the factor in Supabase (*Authentication →
-   Users*) and set it up again.
+   Users*), sign in with the password and turn it on again.
 2. ~~Passwords and MEGA keys stored as plain text.~~ ✅ Fixed (A2). What's
    left in clear text in the table: emails, notes, upload folder links,
    dates and storage figures.
@@ -148,9 +150,10 @@ is just another client of it.
       For a web deployment this is a **must**, not a recommendation.
 - [ ] Use a **long, random, unique** password for your Supabase app user
       (from a password manager).
-- [ ] Re-run `supabase/schema.sql`, then set up **2FA** and a **master
-      password** in the app. Store the **recovery key** in your password
-      manager.
+- [ ] Re-run `supabase/schema.sql`, set a **master password** in the app
+      and store the **recovery key** in your password manager. Then turn on
+      **2FA** (🛡 Security → **Turn on 2FA**); it's optional, but for a web
+      deployment it's strongly recommended.
 - [ ] Update every copy of the app (other computers, the web deployment):
       older copies can't read the table once 2FA is on.
 - [ ] Turn on **2FA** for your Supabase account, GitHub account and web-host
@@ -240,7 +243,7 @@ day or two, L ≈ several days.
 
 | # | Idea | How | Value | Effort | Notes |
 |---|---|---|---|---|---|
-| A1 | ✅ **2FA on the app sign-in** (done) | Supabase TOTP 2FA (free, on by default) + an enrolment screen + a code prompt after the password + a `restrictive` RLS policy requiring `aal2` | ⭐⭐⭐ | M | Closes weak spot #1 on the web |
+| A1 | ✅ **2FA on the app sign-in** (done, optional) | Supabase TOTP 2FA (free, on by default) + Turn on / Turn off in 🛡 Security + a code prompt after the password once it's on + a `restrictive` RLS policy requiring `aal2` | ⭐⭐⭐ | M | Closes weak spot #1 on the web, once turned on |
 | A2 | ✅ **Encrypt passwords and MEGA keys** with a master password (done) | encrypt in the app before saving; Supabase only ever stores ciphertext | ⭐⭐⭐ | M–L | Built with a recovery key, so a forgotten master password alone isn't fatal |
 | A3 | ✅ "Sign out when the browser closes" option (web, done) | keep the session in `sessionStorage` instead of `localStorage` | ⭐⭐ | S | |
 | A4 | Content-Security-Policy header | add to `web/_headers` (Flutter needs `wasm-unsafe-eval` and the Supabase domain) | ⭐ | S | |
