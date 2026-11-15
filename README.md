@@ -40,7 +40,9 @@ failed, and ▶ checks a single account.
 
 ### 📊 Storage at a glance
 Used / total storage and a bar per account, the total across all accounts,
-and **sort by storage** to find the emptiest or fullest account.
+and **sort by storage** to find the emptiest or fullest account. The
+**Rubbish Bin** and **old file versions** sizes show too, with a 🧹 menu to
+free that space (after an *Are you sure?*).
 
 </td>
 </tr>
@@ -77,6 +79,24 @@ browser.
 
 </td>
 </tr>
+<tr>
+<td valign="top">
+
+### 🔐 Encrypted, with 2FA
+A **master password** encrypts MEGA passwords and keys on your device
+(AES-256-GCM), so Supabase only stores ciphertext. Signing in needs a
+6-digit code from an **authenticator app**.
+
+</td>
+<td valign="top">
+
+### ⏰ Scheduled checks
+Pick **weekly**, **monthly** or **a date**: macOS (launchd) or Windows (Task
+Scheduler) starts the app, checks everything and closes it again. No need
+to open it yourself.
+
+</td>
+</tr>
 </table>
 
 Also: inline editing with auto-save, a large **notes** editor, a **MEGA key**
@@ -96,12 +116,24 @@ field per account, show/hide passwords, search, and a dark MEGA-style theme.
 <td align="center"><b>Paste list</b>: shows what's new before saving</td>
 </tr>
 <tr>
+<td><img src="docs/screenshots/schedule.png" alt="Scheduled checks: weekly, monthly or on a date, with what it needs to work"></td>
 <td><img src="docs/screenshots/notes.png" alt="The notes editor"></td>
-<td><img src="docs/screenshots/sign-in.png" alt="Sign in with your Supabase user"></td>
 </tr>
 <tr>
+<td align="center"><b>Scheduled checks</b>: weekly, monthly or on a date</td>
 <td align="center"><b>Notes</b>: a roomy editor for each account</td>
-<td align="center"><b>Sign in</b>: only your Supabase user gets in</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/two-factor.png" alt="Turn on two-step sign-in: scan the QR code with an authenticator app"></td>
+<td><img src="docs/screenshots/unlock.png" alt="Unlock your passwords with the master password"></td>
+</tr>
+<tr>
+<td align="center"><b>Two-step sign-in</b>: set up once, a code at each sign-in</td>
+<td align="center"><b>Master password</b>: unlocks the encrypted passwords</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/sign-in.png" alt="Sign in with your Supabase user"></td>
+<td valign="middle" align="center"><b>Sign in</b>: only your Supabase user gets in.<br>On the web you can tick <i>Sign me out when I close the browser</i>.</td>
 </tr>
 </table>
 
@@ -160,7 +192,18 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 3. **Get the app:** [download it](#download), or build it yourself
    ([BUILD.md](BUILD.md)).
 4. **First launch:** paste your Supabase **Project URL** and **publishable
-   key** → **Sign in** → **Paste list** → **Check all accounts**.
+   key** → **Sign in** → scan the QR code with an authenticator app (2FA) →
+   choose a **master password** and save the **recovery key** →
+   **Paste list** → **Check all accounts**.
+5. **Optional:** 📅 in the header → **Scheduled checks** → weekly, monthly or
+   a date → **Save schedule**.
+
+> **Updating from an older version?** Re-run
+> [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor
+> first (it adds the encryption table, the 2FA rules and two columns), and
+> update the app on every computer you use: once 2FA is on, older copies can't
+> read the table any more. Your existing passwords are encrypted automatically
+> the first time you unlock.
 
 ---
 
@@ -174,13 +217,16 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 | **Add account** | One account: email, password, optional MEGA key, upload folder URL and notes. |
 | **Paste list** | Many accounts, one per line: `email:password`, `email,password`, `email;password`, `email<tab>password` or `email password`. Shows how many are new, already known or skipped before saving, and can update the passwords of known emails. |
 | **Import CSV** | Header row with `email,password` (optional `notes`, `mega_key`, `upload_folder_url`). Only adds emails that aren't in your list yet. |
-| **Export CSV** | A backup with `email, password, mega_key, notes, upload_folder_url, last_login_at, last_status, storage_used_bytes, storage_total_bytes, storage_used_gb, storage_unused_gb`, then a **TOTAL** row. GB = 1024³ bytes, like MEGA. On the web it downloads. **Keep it private: it contains passwords.** |
+| **Export CSV** | A backup with `email, password, mega_key, notes, upload_folder_url, last_login_at, last_status, storage_used_bytes, storage_total_bytes, storage_used_gb, storage_unused_gb, storage_rubbish_bytes, storage_versions_bytes`, then a **TOTAL** row. GB = 1024³ bytes, like MEGA. On the web it downloads. Passwords are **decrypted** in the file, so **keep it private**. |
 | Column headers | Click **STATUS**, **EMAIL**, **LAST LOGIN** or **STORAGE** to sort (asc → desc → off). Accounts never measured stay at the bottom of a storage sort. |
+| **BIN · VERSIONS** | Space taken by the account's Rubbish Bin and by old versions of files (both count towards used storage), read on every check. 🧹 opens **Empty Rubbish Bin** / **Delete old file versions**; each asks *Are you sure?* first, because MEGA can't bring them back. Desktop only. |
 | **Upload folder** | Paste a file request link (`https://mega.nz/filerequest/…`); ↗ opens it in the browser. Folder links (`/folder/…`) are read-only and can't be uploaded to. |
 | **Notes** | Click to edit in a large editor (Cmd/Ctrl+Enter saves); hover to read. |
 | Inline cells | Edit email, password, MEGA key or upload URL right in the table. Saves automatically; the footer shows *All changes saved* or *Not saved — Retry*. |
 | **Show passwords & keys** | Reveals passwords and MEGA keys (remembered between launches). |
-| ⟳ / sign-out icon | Reload from Supabase / sign out (asks first). |
+| 📅 **Scheduled checks** (desktop) | Weekly (day + time), monthly (day 1–28 + time) or once on a date. Saving installs it in launchd (macOS) or Task Scheduler (Windows); **Test now** runs it immediately; *How it works, and doing it by hand* shows the exact commands to install, check and remove it yourself, and where the log is. |
+| 🛡 **Security** | 2FA status, **Change master password**, **New recovery key**, **Remember on this Mac / PC** (needed for scheduled checks), and on the web **Sign out when I close the browser**. |
+| ⟳ / sign-out icon | Reload from Supabase / sign out (asks first; also forgets a remembered master password). |
 
 <details>
 <summary><b>What each check stores in Supabase</b></summary>
@@ -191,11 +237,15 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 | `last_checked_at` | time of the last attempt |
 | `last_status` / `last_error` | `ok` or `failed`, plus the reason |
 | `storage_used_bytes` / `storage_total_bytes` | from `mega-df`, read right after logging in |
+| `storage_rubbish_bytes` / `storage_versions_bytes` | Rubbish Bin and old file versions, from the same `mega-df` |
 | `upload_folder_url` | the upload folder link you pasted (checks never touch it) |
 
+`password` and `mega_key` hold `enc1:…` ciphertext: only the app, with your
+master password, can read them.
+
 MEGA never says whether the **email** or the **password** was wrong, so a
-failure reads "Wrong email or password". Accounts with 2FA enabled can't be
-checked yet ([ideas.md](ideas.md#b-better-checks-reuses-the-login-that-already-happens)).
+failure reads "Wrong email or password". MEGA accounts with 2FA enabled
+can't be checked yet ([ideas.md](ideas.md#b-better-checks-reuses-the-login-that-already-happens)).
 </details>
 
 ---
@@ -206,9 +256,11 @@ checked yet ([ideas.md](ideas.md#b-better-checks-reuses-the-login-that-already-h
   500 MB database and 3–13 MB of the 5 GB monthly download allowance (under
   0.3 %). The one thing to watch is that free projects pause after a week of
   no use → [SUPABASE_USAGE.md](SUPABASE_USAGE.md).
-- **Security:** Row Level Security plus your sign-in; nothing secret is built
-  into the apps; the web version tells search engines and AI crawlers to stay
-  away. Checklist and known weak spots →
+- **Security:** two-step sign-in (TOTP), passwords and MEGA keys encrypted
+  with your master password before they leave the device, Row Level Security
+  that also demands the 2FA code, nothing secret built into the apps, and a
+  web version that tells search engines and AI crawlers to stay away.
+  Details and the remaining weak spots →
   [ideas.md › security](ideas.md#2-is-the-web-version-secure-with-the-login).
 
 ---
@@ -233,7 +285,12 @@ Step-by-step setup for each platform → **[BUILD.md](BUILD.md)**.
 | Symptom | Fix |
 |---|---|
 | *Table "mega_accounts" not found* | Run `supabase/schema.sql` in the Supabase SQL Editor ([setup step 2](SUPABASE_SETUP.md#2-create-the-table-run-the-sql-once)). |
-| *No "upload_folder_url" column yet* | Your table predates that column: re-run `supabase/schema.sql` ([Updating](SUPABASE_SETUP.md#updating-an-existing-project)). |
+| *Table "mega_vault" not found* or *missing a column* | Your database predates this version: re-run `supabase/schema.sql` ([Updating](SUPABASE_SETUP.md#updating-an-existing-project)). |
+| Lost the phone with the authenticator app | Supabase → **Authentication › Users** → your user → delete the MFA factor. Sign in again and set up 2FA on the new phone. |
+| Forgot the master password | **Forgot it? Use the recovery key** on the unlock screen, then choose a new one. Lost both? **Lost both?** erases the stored passwords and keys (everything else stays) so you can start again with Paste list. |
+| An older copy of the app shows an empty list | After 2FA is on, the database answers only 2FA-verified sessions. Update that copy. |
+| Scheduled check didn't run | 📅 → check the list under *For it to work* and *Recent scheduled checks*. The computer must be on and you logged in; the app must stay signed in with **Remember** on. Log: `~/Library/Application Support/mega-checker-app/scheduled-checks.log` (macOS) or `%APPDATA%\mega-checker-app\scheduled-checks.log` (Windows). |
+| Scheduled check opened a window and waited | It needed you (signed out, 2FA code, or master password not remembered). Sign in / unlock and it continues, then closes. |
 | *Supabase rejected the publishable key* | Re-copy it from **Project Settings › API Keys**, then fix it with the server icon in the header. |
 | *Wrong email or password for your Supabase user* | That's the Supabase user, not MEGA. Check it in **Authentication › Users**, or reset its password there. |
 | *This Supabase user is not confirmed yet* | Recreate the user with **Auto Confirm User** ticked, or confirm it in the dashboard. |
@@ -256,22 +313,32 @@ Step-by-step setup for each platform → **[BUILD.md](BUILD.md)**.
 
 ```
 lib/
-  main.dart                  app start, Supabase init, setup → sign-in → home
+  main.dart                  app start (--scheduled-check), Supabase init,
+                             setup → sign-in → 2FA → master password → home
   app_theme.dart             MEGA design tokens + Material theme
   models.dart                Account, StorageInfo, LoginResult
-  mega_service.dart          a check: login → whoami → df (storage) → ls → logout
-  platform/                  desktop-only code (MEGAcmd on macOS / Windows,
-                             Finder / Explorer) + a stub for the web build
+  mega_service.dart          a check: login → whoami → df (storage, bin,
+                             versions) → ls → logout; empty bin / delete versions
+  security/                  vault crypto (PBKDF2 + AES-GCM), mega_vault table,
+                             encrypting repository wrapper
+  schedule.dart              weekly / monthly / once → launchd plist, Task XML
+  scheduled_runs.dart        log a scheduled run, retire one-time schedules
+  platform/                  desktop-only code (MEGAcmd, Finder / Explorer,
+                             launchd / Task Scheduler, Keychain / DPAPI, lock
+                             files) + stubs for the web build; web session
+                             storage (localStorage / sessionStorage)
   accounts_repository.dart   Supabase table access + friendly error messages
   account_import.dart        "Paste list" parser + import merge plan
   csv_import.dart            CSV import / export (file_selector dialogs)
   links.dart                 opens upload folder links in the browser
   prefs.dart                 shared_preferences wrapper
   format.dart                bytes / date formatting
-  screens/                   setup, sign-in, home (accounts table)
-  widgets/                   account row, dialogs, badges, logo
+  screens/                   setup, sign-in, 2FA, master password, home
+  widgets/                   account row, dialogs (security, schedule, …),
+                             badges, logo
 macos/  windows/  web/       platform shells (web/: favicon, robots.txt, llms.txt)
-supabase/schema.sql          table + Row Level Security (run once, re-run to update)
+supabase/schema.sql          tables + Row Level Security + 2FA rules (run once,
+                             re-run to update)
 tool/generate_icons.swift    draws every app icon + favicon from the "M" logo
 tool/readme_screenshots_test.dart   renders the screenshots in docs/
 .github/workflows/release.yml       builds the release downloads

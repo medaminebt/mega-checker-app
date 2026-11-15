@@ -16,6 +16,10 @@ dependencies:
   shared_preferences: ^2.5.6  # local settings (Supabase URL/key, UI prefs)
   file_selector: ^1.1.0       # CSV open / save dialogs (macOS, Windows, web)
   url_launcher: ^6.3.3        # opens upload folder links in the browser
+  cryptography: ^2.9.0        # AES-256-GCM + PBKDF2 for the master password (Web Crypto in browsers)
+  qr_flutter: ^4.1.0          # QR code for setting up 2FA in an authenticator app
+  web: ^1.1.1                 # sessionStorage ("sign out when the browser closes")
+  ffi: ^2.2.0                 # Windows DPAPI ("remember the master password on this PC")
 dev_dependencies:
   flutter_test:
     sdk: flutter

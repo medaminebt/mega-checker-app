@@ -35,6 +35,11 @@ class Account {
   int? storageUsedBytes;
   int? storageTotalBytes;
 
+  /// Space taken by the Rubbish Bin and by old file versions (also from
+  /// `mega-df`). Both count towards the used storage and can be freed.
+  int? storageRubbishBytes;
+  int? storageVersionsBytes;
+
   /// Transient UI state: a check is in progress for this account.
   bool running = false;
 
@@ -51,6 +56,8 @@ class Account {
     this.lastError,
     this.storageUsedBytes,
     this.storageTotalBytes,
+    this.storageRubbishBytes,
+    this.storageVersionsBytes,
   });
 
   AccountStatus get status {
@@ -102,6 +109,8 @@ class Account {
       lastError: r['last_error'] as String?,
       storageUsedBytes: big('storage_used_bytes'),
       storageTotalBytes: big('storage_total_bytes'),
+      storageRubbishBytes: big('storage_rubbish_bytes'),
+      storageVersionsBytes: big('storage_versions_bytes'),
     );
   }
 
@@ -119,6 +128,16 @@ class Account {
 }
 
 enum AccountStatus { untested, running, ok, failed }
+
+/// Permanent clean-ups that free storage in a MEGA account.
+enum FreeUpAction {
+  /// Delete everything in the Rubbish Bin (`rm -r -f //bin/*`).
+  emptyRubbishBin,
+
+  /// Delete the old versions of every file (`deleteversions -f --all`);
+  /// current files stay.
+  deleteVersions,
+}
 
 /// Used / total storage of a MEGA account, in bytes.
 class StorageInfo {
@@ -164,7 +183,22 @@ class LoginResult {
   /// Storage read after a successful login (null if `mega-df` failed).
   final StorageInfo? storage;
 
-  LoginResult(this.outcome, this.message, {this.storage});
+  /// Rubbish Bin / file versions size from the same `mega-df` (null when
+  /// not reported).
+  final int? rubbishBytes;
+  final int? versionsBytes;
+
+  /// Login worked but the requested clean-up ([FreeUpAction]) didn't.
+  final String? actionError;
+
+  LoginResult(
+    this.outcome,
+    this.message, {
+    this.storage,
+    this.rubbishBytes,
+    this.versionsBytes,
+    this.actionError,
+  });
 
   bool get ok => outcome == LoginOutcome.success;
 

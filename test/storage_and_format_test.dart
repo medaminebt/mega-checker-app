@@ -54,6 +54,37 @@ Total size taken up by file versions:            0
       expect(const StorageInfo(25, 20).freeBytes, 0);
     });
 
+    test('reads the Rubbish Bin and file versions sizes', () {
+      const out = '''
+Cloud drive:               5242880 in       3 file(s) and       1 folder(s)
+Inbox:                           0 in       0 file(s) and       0 folder(s)
+Rubbish bin:             104857600 in      12 file(s) and       2 folder(s)
+---------------------------------------------------------------------------
+USED STORAGE:          110100480                           0.51% of 21474836480
+---------------------------------------------------------------------------
+Total size taken up by file versions:      3145728
+''';
+      final r = MegaService.parseDf(out)!;
+      expect(r.storage, const StorageInfo(110100480, 21474836480));
+      expect(r.rubbishBytes, 104857600);
+      expect(r.versionsBytes, 3145728);
+
+      final empty = MegaService.parseDf(sample)!;
+      expect(empty.rubbishBytes, 0);
+      expect(empty.versionsBytes, 0);
+    });
+
+    test('truncated bin / versions sizes (≥ 1 TB) are left unknown', () {
+      const out =
+          'Rubbish bin:  10...776 in  3 file(s) and  0 folder(s)\n'
+          'USED STORAGE:  5242880   0.02% of 21474836480\n'
+          'Total size taken up by file versions:  21...552\n';
+      final r = MegaService.parseDf(out)!;
+      expect(r.rubbishBytes, isNull);
+      expect(r.versionsBytes, isNull);
+      expect(r.storage.usedBytes, 5242880);
+    });
+
     test('empty account with NaN percent still parses', () {
       const out = 'USED STORAGE:                    0         ----% of 0\n';
       expect(MegaService.parseDfOutput(out), const StorageInfo(0, 0));

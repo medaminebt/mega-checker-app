@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import '../platform/auth_storage.dart';
 import '../prefs.dart';
 import '../widgets/form_bits.dart';
 
@@ -12,12 +13,16 @@ class SignInScreen extends StatefulWidget {
     required this.onSignIn,
     required this.onChangeProject,
     this.projectHost,
+    this.notice,
   });
 
   /// Returns an error message, or null on success.
   final Future<String?> Function(String email, String password) onSignIn;
   final VoidCallback onChangeProject;
   final String? projectHost;
+
+  /// Info box above the form (e.g. a scheduled check is waiting).
+  final String? notice;
 
   @override
   State<SignInScreen> createState() => _SignInScreenState();
@@ -28,6 +33,7 @@ class _SignInScreenState extends State<SignInScreen> {
   final _password = TextEditingController();
   bool _obscure = true;
   bool _busy = false;
+  bool _signOutOnClose = Prefs.signOutOnBrowserClose;
   String? _error;
 
   @override
@@ -49,6 +55,11 @@ class _SignInScreenState extends State<SignInScreen> {
       _busy = true;
       _error = null;
     });
+    if (AuthStorage.isSupported) {
+      // Decides where the session is saved (sessionStorage or localStorage).
+      await Prefs.setSignOutOnBrowserClose(_signOutOnClose);
+      AuthStorage.applySetting();
+    }
     final err = await widget.onSignIn(email, _password.text);
     if (!mounted) return;
     setState(() {
@@ -85,6 +96,10 @@ class _SignInScreenState extends State<SignInScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.notice != null) ...[
+              InlineMessage(widget.notice!, error: false),
+              const SizedBox(height: 16),
+            ],
             const FieldLabel('Email'),
             TextField(
               controller: _email,
@@ -122,6 +137,31 @@ class _SignInScreenState extends State<SignInScreen> {
               ),
               onSubmitted: (_) => _submit(),
             ),
+            if (AuthStorage.isSupported) ...[
+              const SizedBox(height: 10),
+              InkWell(
+                borderRadius: BorderRadius.circular(AppTheme.radius),
+                onTap: _busy
+                    ? null
+                    : () => setState(() => _signOutOnClose = !_signOutOnClose),
+                child: Row(
+                  children: [
+                    Checkbox(
+                      value: _signOutOnClose,
+                      onChanged: _busy
+                          ? null
+                          : (v) => setState(() => _signOutOnClose = v ?? false),
+                    ),
+                    const Expanded(
+                      child: Text(
+                        'Sign me out when I close the browser',
+                        style: AppTheme.body,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 16),
               InlineMessage(_error!),

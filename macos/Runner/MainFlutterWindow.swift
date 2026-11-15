@@ -3,7 +3,11 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
-    let flutterViewController = FlutterViewController()
+    // Pass the command line to Dart's main(args): the scheduled check starts
+    // the app with --scheduled-check (see lib/schedule.dart).
+    let project = FlutterDartProject()
+    project.dartEntrypointArguments = Array(CommandLine.arguments.dropFirst())
+    let flutterViewController = FlutterViewController(project: project)
     self.contentViewController = flutterViewController
 
     // Sensible default + minimum window size, centered on screen.

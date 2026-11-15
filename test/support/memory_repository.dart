@@ -17,6 +17,10 @@ class MemoryAccountsRepository implements AccountsRepository {
           'storage_used_bytes': a.storageUsedBytes,
         if (a.storageTotalBytes != null)
           'storage_total_bytes': a.storageTotalBytes,
+        if (a.storageRubbishBytes != null)
+          'storage_rubbish_bytes': a.storageRubbishBytes,
+        if (a.storageVersionsBytes != null)
+          'storage_versions_bytes': a.storageVersionsBytes,
       };
     }
   }

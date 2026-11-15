@@ -12,12 +12,19 @@ import '../format.dart';
 import '../links.dart';
 import '../mega_service.dart';
 import '../models.dart';
+import '../platform/desktop.dart';
 import '../platform/native.dart';
 import '../prefs.dart';
+import '../schedule.dart';
+import '../scheduled_runs.dart';
+import '../security/encrypted_repository.dart';
+import '../security/security_controller.dart';
 import '../widgets/account_row.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/mega_logo.dart';
+import '../widgets/schedule_dialog.dart';
+import '../widgets/security_dialog.dart';
 
 // Random pause between accounts so logins don't look like one tight burst.
 // Mutable so tests can set them to 0.
@@ -32,6 +39,11 @@ class HomePage extends StatefulWidget {
     this.projectHost,
     this.onSignOut,
     this.onChangeProject,
+    this.security,
+    this.scheduledRun = false,
+    this.watchScheduleRequests = false,
+    this.onQuit,
+    this.signOutNote,
   });
 
   final AccountsRepository repository;
@@ -39,6 +51,22 @@ class HomePage extends StatefulWidget {
   final String? projectHost;
   final Future<void> Function()? onSignOut;
   final Future<void> Function()? onChangeProject;
+
+  /// Security / schedule settings (null hides those header buttons).
+  final SecurityController? security;
+
+  /// Started by the OS schedule: check all accounts once loaded, then quit.
+  final bool scheduledRun;
+
+  /// Run a check when a scheduled run hands one over (desktop window that
+  /// owns `app.lock`).
+  final bool watchScheduleRequests;
+
+  /// Quits the app (end of a scheduled run).
+  final VoidCallback? onQuit;
+
+  /// Extra line in the "Sign out?" dialog.
+  final String? signOutNote;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -69,17 +97,37 @@ class _HomePageState extends State<HomePage> {
   bool _flushing = false;
   String? _syncError;
 
+  // Scheduled checks.
+  Timer? _requestTimer;
+  Timer? _closeTimer;
+  int? _closingIn; // seconds left before a scheduled run quits the app
+  String? _scheduledSummary;
+
   AccountsRepository get _repo => widget.repository;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load().then((_) {
+      if (widget.scheduledRun) {
+        _startScheduledRun();
+      } else if (widget.watchScheduleRequests) {
+        _pollScheduleRequest(); // one may have arrived while locked
+      }
+    });
+    if (widget.watchScheduleRequests && !widget.scheduledRun) {
+      _requestTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => _pollScheduleRequest(),
+      );
+    }
   }
 
   @override
   void dispose() {
     _stopRequested = true;
+    _requestTimer?.cancel();
+    _closeTimer?.cancel();
     _flushTimer?.cancel();
     unawaited(_flush()); // don't lose the last edits
     _search.dispose();
@@ -103,6 +151,7 @@ class _HomePageState extends State<HomePage> {
         _accounts = list;
         _loading = false;
       });
+      _reportEncryptionNotes();
     } catch (e) {
       _safeSetState(() {
         _loadError = describeError(e);
@@ -334,6 +383,12 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       r = LoginResult(LoginOutcome.error, '$e');
     }
+    _applyResult(a, r);
+    return r;
+  }
+
+  /// Write a login result into [a] and queue it for Supabase.
+  void _applyResult(Account a, LoginResult r) {
     final now = DateTime.now();
     final iso = now.toUtc().toIso8601String();
     final patch = <String, dynamic>{
@@ -357,10 +412,17 @@ class _HomePageState extends State<HomePage> {
           ..storageUsedBytes = s.usedBytes
           ..storageTotalBytes = s.totalBytes;
       }
+      if (r.rubbishBytes != null) {
+        patch['storage_rubbish_bytes'] = r.rubbishBytes;
+        a.storageRubbishBytes = r.rubbishBytes;
+      }
+      if (r.versionsBytes != null) {
+        patch['storage_versions_bytes'] = r.versionsBytes;
+        a.storageVersionsBytes = r.versionsBytes;
+      }
     }
     _safeSetState(() {});
     _queue(a, patch, now: true);
-    return r;
   }
 
   bool get _canCheck => MegaService.isSupported;
@@ -368,6 +430,10 @@ class _HomePageState extends State<HomePage> {
   static const _noChecksHere =
       "Checks need the desktop app (macOS or Windows) — MEGAcmd can't run "
       'in a browser.';
+
+  static const _otherCopyChecking =
+      'Another copy of the app (probably a scheduled check) is using MEGAcmd '
+      'right now. Try again when it has finished.';
 
   List<Account> get _failedAccounts =>
       _accounts.where((a) => a.status == AccountStatus.failed).toList();
@@ -377,80 +443,261 @@ class _HomePageState extends State<HomePage> {
   Future<void> _recheckFailed() => _runQueue(_failedAccounts, label: 'Recheck');
 
   /// Check [queue] one account at a time, with a random pause in between.
-  Future<void> _runQueue(List<Account> queue, {String label = 'Done'}) async {
-    if (_running || queue.isEmpty || !_canCheck) return;
-    await _flush();
-    setState(() {
-      _running = true;
-      _stopRequested = false;
-      _runTotal = queue.length;
-      _runDone = 0;
-    });
-    final rng = Random();
-    var ok = 0, failed = 0;
+  /// Returns the tally, or null when it couldn't start.
+  Future<({int ok, int failed, bool stopped})?> _runQueue(
+    List<Account> queue, {
+    String label = 'Done',
+  }) async {
+    if (_running || queue.isEmpty || !_canCheck) return null;
+    if (!await AppInstance.acquireChecks()) {
+      _snack(_otherCopyChecking, error: true);
+      return null;
+    }
+    try {
+      await _flush();
+      _safeSetState(() {
+        _running = true;
+        _stopRequested = false;
+        _runTotal = queue.length;
+        _runDone = 0;
+      });
+      final rng = Random();
+      var ok = 0, failed = 0;
 
-    for (var i = 0; i < queue.length; i++) {
-      if (_stopRequested || !mounted) break;
-      final a = queue[i];
-      _safeSetState(() => _progress = 'checking ${a.email}');
-      final r = await _check(a);
-      r.ok ? ok++ : failed++;
-      _safeSetState(() => _runDone = i + 1);
+      for (var i = 0; i < queue.length; i++) {
+        if (_stopRequested || !mounted) break;
+        final a = queue[i];
+        _safeSetState(() => _progress = 'checking ${a.email}');
+        final r = await _check(a);
+        r.ok ? ok++ : failed++;
+        _safeSetState(() => _runDone = i + 1);
 
-      if (i < queue.length - 1 && !_stopRequested) {
-        final delay =
-            kDelayMinSec + rng.nextInt(kDelayMaxSec - kDelayMinSec + 1);
-        for (var s = delay; s > 0; s--) {
-          if (_stopRequested || !mounted) break;
-          _safeSetState(() => _progress = 'next account in ${s}s');
-          await Future.delayed(const Duration(seconds: 1));
+        if (i < queue.length - 1 && !_stopRequested) {
+          final delay =
+              kDelayMinSec + rng.nextInt(kDelayMaxSec - kDelayMinSec + 1);
+          for (var s = delay; s > 0; s--) {
+            if (_stopRequested || !mounted) break;
+            _safeSetState(() => _progress = 'next account in ${s}s');
+            await Future.delayed(const Duration(seconds: 1));
+          }
         }
       }
+      final saved = await _flush();
+      final stopped = _stopRequested;
+      _safeSetState(() {
+        _running = false;
+        _stopRequested = false;
+        _progress = null;
+      });
+      _snack(
+        '$label: $ok logged in, $failed failed'
+        '${stopped ? ' (stopped early)' : ''}.'
+        '${saved ? ' Saved to Supabase.' : ''}',
+        error: failed > 0 && ok == 0,
+      );
+      return (ok: ok, failed: failed, stopped: stopped);
+    } finally {
+      await AppInstance.releaseChecks();
     }
-    final saved = await _flush();
-    if (!mounted) return;
-    final stopped = _stopRequested;
-    setState(() {
-      _running = false;
-      _stopRequested = false;
-      _progress = null;
-    });
-    _snack(
-      '$label: $ok logged in, $failed failed'
-      '${stopped ? ' (stopped early)' : ''}.'
-      '${saved ? ' Saved to Supabase.' : ''}',
-      error: failed > 0 && ok == 0,
-    );
   }
 
   Future<void> _runOne(Account a) async {
     if (_running || !_canCheck) return;
-    setState(() {
-      _running = true;
-      _runTotal = 1;
-      _runDone = 0;
-      _progress = 'checking ${a.email}';
-    });
-    final r = await _check(a);
-    final saved = await _flush();
+    if (!await AppInstance.acquireChecks()) {
+      _snack(_otherCopyChecking, error: true);
+      return;
+    }
+    try {
+      setState(() {
+        _running = true;
+        _runTotal = 1;
+        _runDone = 0;
+        _progress = 'checking ${a.email}';
+      });
+      final r = await _check(a);
+      final saved = await _flush();
+      if (!mounted) return;
+      setState(() {
+        _running = false;
+        _runDone = 1;
+        _progress = null;
+      });
+      _snack(
+        '${a.email}: ${r.ok ? 'logged in' : r.errorText}.'
+        '${saved ? ' Saved.' : ''}',
+        error: !r.ok,
+      );
+    } finally {
+      await AppInstance.releaseChecks();
+    }
+  }
+
+  /// Empty the Rubbish Bin or delete old versions, after "Are you sure?".
+  Future<void> _freeUp(Account a, FreeUpAction action) async {
+    if (_running || _busy || !_canCheck) return;
+    if (!await confirmFreeUp(context, a, action)) return;
+    if (!await AppInstance.acquireChecks()) {
+      _snack(_otherCopyChecking, error: true);
+      return;
+    }
+    final bin = action == FreeUpAction.emptyRubbishBin;
+    final before = bin ? a.storageRubbishBytes : a.storageVersionsBytes;
+    try {
+      _safeSetState(() {
+        _running = true;
+        _runTotal = 1;
+        _runDone = 0;
+        _progress = bin
+            ? 'emptying the Rubbish Bin of ${a.email}'
+            : 'deleting old file versions in ${a.email}';
+        a.running = true;
+      });
+      LoginResult r;
+      try {
+        r = await MegaService.freeUpSpace(a, action);
+      } catch (e) {
+        r = LoginResult(LoginOutcome.error, '$e');
+      }
+      _applyResult(a, r);
+      final saved = await _flush();
+      if (!mounted) return;
+      setState(() {
+        _running = false;
+        _runDone = 1;
+        _progress = null;
+      });
+      final after = bin ? a.storageRubbishBytes : a.storageVersionsBytes;
+      final String msg;
+      if (!r.ok) {
+        msg = '${a.email}: ${r.errorText}.';
+      } else if (r.actionError != null) {
+        msg = '${a.email}: ${r.actionError}';
+      } else {
+        final freed = (before != null && after != null && before > after)
+            ? ' Freed ${Fmt.bytes(before - after)}.'
+            : '';
+        msg =
+            '${a.email}: ${bin ? 'Rubbish Bin emptied' : 'old file versions deleted'}.'
+            '$freed${saved ? ' Saved.' : ''}';
+      }
+      _snack(msg, error: !r.ok || r.actionError != null);
+    } finally {
+      await AppInstance.releaseChecks();
+    }
+  }
+
+  // ---- scheduled checks ----------------------------------------------------
+
+  /// Started by the OS schedule: load (retrying while the network wakes up),
+  /// check everything, log it, then quit after a short countdown.
+  Future<void> _startScheduledRun() async {
+    for (var attempt = 0; _loadError != null && attempt < 6; attempt++) {
+      await Future<void>.delayed(const Duration(seconds: 20));
+      if (!mounted) return;
+      await _load();
+    }
     if (!mounted) return;
-    setState(() {
-      _running = false;
-      _runDone = 1;
-      _progress = null;
-    });
-    _snack(
-      '${a.email}: ${r.ok ? 'logged in' : r.errorText}.'
-      '${saved ? ' Saved.' : ''}',
-      error: !r.ok,
+    if (_loadError != null) {
+      await ScheduledRuns.record(
+        ScheduledRunEntry(
+          at: DateTime.now(),
+          note: "Couldn't load the accounts: $_loadError",
+        ),
+      );
+      return; // stay open so the problem is visible
+    }
+    await _runScheduled();
+    if (mounted) _startCloseCountdown();
+  }
+
+  /// A scheduled run found this window open and handed the check over.
+  Future<void> _pollScheduleRequest() async {
+    if (_running || _busy || _loading || !_canCheck) return;
+    if (!await AppInstance.takeScheduledRequest()) return;
+    if (!mounted) return;
+    _snack('Scheduled check: starting now.');
+    await _runScheduled(note: 'ran in the open app window');
+  }
+
+  Future<void> _runScheduled({String? note}) async {
+    final r = await _runQueue(
+      List<Account>.from(_accounts),
+      label: 'Scheduled check',
     );
+    final entry = ScheduledRunEntry(
+      at: DateTime.now(),
+      ok: r?.ok ?? 0,
+      failed: r?.failed ?? 0,
+      stopped: r?.stopped ?? false,
+      note: r == null
+          ? (_accounts.isEmpty
+                ? 'No accounts to check'
+                : !_canCheck
+                ? 'Checks are not available here'
+                : 'Another copy was already checking')
+          : note,
+    );
+    _safeSetState(() => _scheduledSummary = entry.summary);
+    await ScheduledRuns.record(entry);
+  }
+
+  void _startCloseCountdown() {
+    _closeTimer?.cancel();
+    setState(() => _closingIn = 15);
+    _closeTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      final left = (_closingIn ?? 0) - 1;
+      if (left <= 0) {
+        t.cancel();
+        widget.onQuit?.call();
+        return;
+      }
+      _safeSetState(() => _closingIn = left);
+    });
+  }
+
+  void _keepOpen() {
+    _closeTimer?.cancel();
+    setState(() => _closingIn = null);
+  }
+
+  /// After a load through the encryption layer: say what happened to old
+  /// plain-text rows or undecryptable values.
+  void _reportEncryptionNotes() {
+    final r = widget.repository;
+    if (r is! EncryptedAccountsRepository) return;
+    if (r.unreadable.isNotEmpty) {
+      final n = r.unreadable.length;
+      _snack(
+        "$n account${n == 1 ? '' : 's'} have a password or key that "
+        "doesn't open with your master password (${r.unreadable.take(3).join(', ')}"
+        '${n > 3 ? '…' : ''}). They show empty: type them again.',
+        error: true,
+      );
+    } else if (r.migrationError != null) {
+      _snack(
+        'Some passwords are not encrypted yet (retried on the next load): '
+        '${r.migrationError}',
+        error: true,
+      );
+    } else if (r.migrated > 0) {
+      _snack(
+        'Encrypted the stored passwords and keys of ${r.migrated} '
+        'account${r.migrated == 1 ? '' : 's'}.',
+      );
+    }
   }
 
   // ---- session -------------------------------------------------------------
 
   Future<void> _signOut() async {
     if (_running) return;
-    if (!await confirmSignOut(context, email: widget.userEmail)) return;
+    if (!await confirmSignOut(
+      context,
+      email: widget.userEmail,
+      note: widget.signOutNote,
+    )) {
+      return;
+    }
     await _flush();
     await widget.onSignOut?.call();
   }
@@ -646,6 +893,19 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(width: 8),
           ],
+          if (widget.security != null && Scheduler.isSupported)
+            IconButton(
+              tooltip: 'Scheduled checks',
+              onPressed: () =>
+                  showScheduleDialog(context, security: widget.security),
+              icon: const Icon(Icons.event_repeat_rounded, size: 20),
+            ),
+          if (widget.security != null)
+            IconButton(
+              tooltip: 'Security: 2FA, master password',
+              onPressed: () => showSecurityDialog(context, widget.security!),
+              icon: const Icon(Icons.shield_rounded, size: 20),
+            ),
           if (widget.onChangeProject != null)
             IconButton(
               tooltip: 'Supabase project settings',
@@ -681,6 +941,10 @@ class _HomePageState extends State<HomePage> {
         final column = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.scheduledRun) ...[
+              _scheduledBanner(),
+              const SizedBox(height: 16),
+            ],
             _stats(),
             const SizedBox(height: 22),
             SectionTitle(
@@ -709,6 +973,25 @@ class _HomePageState extends State<HomePage> {
             ? SingleChildScrollView(padding: padding, child: column)
             : Padding(padding: padding, child: column);
       },
+    );
+  }
+
+  /// Top of the window during a scheduled run.
+  Widget _scheduledBanner() {
+    final closing = _closingIn;
+    final summary = _scheduledSummary;
+    final text = closing != null
+        ? 'Scheduled check finished: ${summary ?? ''}. Closing in $closing s.'
+        : summary != null
+        ? 'Scheduled check finished: $summary.'
+        : 'Scheduled check: checking all accounts, then this window closes '
+              'by itself.';
+    return InlineMessage(
+      text,
+      error: false,
+      trailing: closing == null
+          ? null
+          : TextButton(onPressed: _keepOpen, child: const Text('Keep open')),
     );
   }
 
@@ -778,8 +1061,10 @@ class _HomePageState extends State<HomePage> {
     final untested = _accounts
         .where((a) => a.status == AccountStatus.untested)
         .length;
-    var used = 0, quota = 0, free = 0, measured = 0;
+    var used = 0, quota = 0, free = 0, measured = 0, bin = 0, versions = 0;
     for (final a in _accounts) {
+      bin += a.storageRubbishBytes ?? 0;
+      versions += a.storageVersionsBytes ?? 0;
       final s = a.storage;
       if (s == null) continue;
       used += s.usedBytes;
@@ -787,6 +1072,10 @@ class _HomePageState extends State<HomePage> {
       free += s.freeBytes;
       measured++;
     }
+    final reclaimable = [
+      if (bin > 0) 'bin ${Fmt.bytes(bin)}',
+      if (versions > 0) 'versions ${Fmt.bytes(versions)}',
+    ].join(' · ');
 
     final cards = [
       _StatCard(label: 'Accounts', value: '$total', dot: AppTheme.ashGrey),
@@ -804,8 +1093,9 @@ class _HomePageState extends State<HomePage> {
       dot: AppTheme.megaBlue,
       caption: measured == 0
           ? 'Measured on each successful login'
-          : '${Fmt.bytes(free)} free  ·  across $measured '
-                'account${measured == 1 ? '' : 's'}',
+          : '${Fmt.bytes(free)} free  ·  '
+                '${reclaimable.isEmpty ? '' : '$reclaimable  ·  '}'
+                'across $measured account${measured == 1 ? '' : 's'}',
       fraction: quota == 0 ? null : used / quota,
     );
 
@@ -1002,6 +1292,13 @@ class _HomePageState extends State<HomePage> {
                             : _noChecksHere,
                         onDelete: () => _delete(a),
                         onOpenUpload: (uri) => _openUpload(a, uri),
+                        onFreeUp: _canCheck
+                            ? (action) => _freeUp(a, action)
+                            : null,
+                        freeUpTooltip: _canCheck
+                            ? 'Free up space'
+                            : 'Freeing space needs the desktop app '
+                                  '(MEGAcmd)',
                       );
                     },
                   ),
@@ -1107,6 +1404,16 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: AccountCols.gap),
+          SizedBox(
+            width: AccountCols.bin,
+            child: Tooltip(
+              message:
+                  'Rubbish Bin and old file versions: space you can free '
+                  '(menu on each row)',
+              child: h('BIN · VERSIONS'),
             ),
           ),
           const SizedBox(width: AccountCols.gap),

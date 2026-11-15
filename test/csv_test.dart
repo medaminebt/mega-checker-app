@@ -77,7 +77,7 @@ void main() {
       text.split('\n').first,
       'email,password,mega_key,notes,upload_folder_url,last_login_at,'
       'last_status,storage_used_bytes,storage_total_bytes,storage_used_gb,'
-      'storage_unused_gb',
+      'storage_unused_gb,storage_rubbish_bytes,storage_versions_bytes',
     );
     expect(text, contains('2026-11-15T10:00:00.000Z'));
     expect(text, contains('21474836480'));

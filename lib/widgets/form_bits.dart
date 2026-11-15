@@ -142,10 +142,13 @@ class AuthShell extends StatelessWidget {
 
 /// Inline error / warning box used inside forms.
 class InlineMessage extends StatelessWidget {
-  const InlineMessage(this.text, {super.key, this.error = true});
+  const InlineMessage(this.text, {super.key, this.error = true, this.trailing});
 
   final String text;
   final bool error;
+
+  /// Optional button at the right edge.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -179,6 +182,7 @@ class InlineMessage extends StatelessWidget {
               ),
             ),
           ),
+          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
         ],
       ),
     );

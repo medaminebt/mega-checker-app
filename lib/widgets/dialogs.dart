@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../account_import.dart';
 import '../app_theme.dart';
+import '../format.dart';
 import '../links.dart';
 import '../models.dart';
 import 'form_bits.dart';
@@ -560,7 +561,11 @@ Future<bool> confirmDelete(BuildContext context, Account a) async {
 // Confirm sign out
 // ---------------------------------------------------------------------------
 
-Future<bool> confirmSignOut(BuildContext context, {String? email}) async {
+Future<bool> confirmSignOut(
+  BuildContext context, {
+  String? email,
+  String? note,
+}) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => MegaDialog(
@@ -582,8 +587,65 @@ Future<bool> confirmSignOut(BuildContext context, {String? email}) async {
       child: Text(
         'You\'ll need ${email == null ? 'your Supabase email' : '“$email”'} '
         'and its password to sign in again. Your MEGA accounts stay saved in '
-        'Supabase.',
+        'Supabase.${note == null ? '' : '\n\n$note'}',
         style: AppTheme.bodySecondary,
+      ),
+    ),
+  );
+  return ok == true;
+}
+
+// ---------------------------------------------------------------------------
+// Confirm a permanent clean-up (empty Rubbish Bin / delete old versions)
+// ---------------------------------------------------------------------------
+
+/// "Are you sure?" before deleting anything for good in a MEGA account.
+Future<bool> confirmFreeUp(
+  BuildContext context,
+  Account a,
+  FreeUpAction action,
+) async {
+  final bin = action == FreeUpAction.emptyRubbishBin;
+  final bytes = bin ? a.storageRubbishBytes : a.storageVersionsBytes;
+  final size = bytes == null ? '' : ' (${Fmt.bytes(bytes)})';
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => MegaDialog(
+      icon: bin ? Icons.delete_sweep_rounded : Icons.history_rounded,
+      title: bin ? 'Empty the Rubbish Bin?' : 'Delete old file versions?',
+      width: 480,
+      actions: [
+        OutlinedButton(
+          style: AppTheme.ghostButton,
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton.icon(
+          onPressed: () => Navigator.pop(ctx, true),
+          icon: const Icon(Icons.delete_forever_rounded, size: 18),
+          label: const Text('Yes, delete permanently'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            bin
+                ? 'Are you sure? Everything in the Rubbish Bin of “${a.email}”'
+                      '$size is deleted for good. MEGA can\'t bring it back.'
+                : 'Are you sure? The older versions of every file in '
+                      '“${a.email}”$size are deleted for good. The current '
+                      'version of each file stays. MEGA can\'t bring the old '
+                      'versions back.',
+            style: AppTheme.body,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'The app logs in with MEGAcmd to do it (this also counts as a '
+            'check), then reads the new storage figures.',
+            style: AppTheme.caption,
+          ),
+        ],
       ),
     ),
   );

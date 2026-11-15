@@ -72,6 +72,12 @@ On **another** Mac, macOS blocks the app the first time (it isn't notarized):
 try to open it, then **System Settings → Privacy & Security → Open Anyway**.
 MEGAcmd must be installed on every Mac that runs the app.
 
+**Scheduled checks** start the app from where it was when you saved the
+schedule, so install it first (`./build.sh --install` → `/Applications`) and
+set the schedule up from that copy. The schedule is a LaunchAgent in
+`~/Library/LaunchAgents/com.megakeepalive.scheduled-check.plist`; the app
+passes its command line to Dart through `macos/Runner/MainFlutterWindow.swift`.
+
 Troubleshooting: [README.md](README.md#troubleshooting). Prebuilt downloads: the repo's **Releases** page.
 
 ---
@@ -171,6 +177,13 @@ MEGAcmd for Windows must be installed on that PC too.
   from the repo's **Releases** page instead.
 - MEGAcmd may open its own server window the first time a check runs. Leave it
   open (or minimised) while checks run.
+- **Scheduled checks** use Task Scheduler (`schtasks /Create /XML`, a task
+  named *mega-checker-app scheduled check* that runs only while you're signed
+  in). Set them up from the copy you'll keep: the task starts that exact
+  `.exe`. The remembered master password is a DPAPI-encrypted file in
+  `%APPDATA%\mega-checker-app\keys\`. Like the rest of the Windows build,
+  this is written to Microsoft's documented formats but **not yet tried on a
+  real PC**: if *Save schedule* reports an error, copy it.
 - Optional, for a real installer: the [`msix`](https://pub.dev/packages/msix)
   package turns the build into an `.msix` installer
   (`flutter pub add --dev msix`, then `dart run msix:create`).
@@ -188,7 +201,11 @@ MEGAcmd for Windows must be installed on that PC too.
 | **Upload folder URL**: open the folder in a new tab and upload | ✅ |
 | Sort (status, email, last login, storage), search | ✅ |
 | Import CSV (file picker) / Export CSV (downloads the file) | ✅ |
-| **Check all / Recheck failed / ▶ check one** | ❌ disabled |
+| Two-step sign-in (2FA), master password, recovery key | ✅ (the master password is asked on every page load and never stored in the browser) |
+| **Sign me out when I close the browser** (sign-in screen, or 🛡 Security) | ✅ web only |
+| Rubbish Bin / versions sizes | ✅ shown |
+| **Check all / Recheck failed / ▶ check one**, empty bin / delete versions | ❌ disabled |
+| Scheduled checks | ❌ desktop only |
 
 **Why no checks in the browser?** A check runs the MEGAcmd program on your
 computer. Browsers can't start programs (that's a core security rule), so the
@@ -216,9 +233,14 @@ renderer variants, but a browser only downloads **≈ 10 MB** on the first visit
 Google's CDN, so the app makes **no third-party requests**, only to your
 Supabase project.
 
+**Renderer:** the default build compiles the app to **JavaScript** (dart2js)
+and draws with **CanvasKit** (Skia compiled to WebAssembly, `canvaskit.wasm`).
+You can confirm it in `build/web/flutter_bootstrap.js`:
+`"compileTarget":"dart2js","renderer":"canvaskit"`.
+
 Optional: add `--wasm` for a faster WebAssembly build in Chrome, Edge and
 Firefox (other browsers automatically fall back to the JavaScript build):
-`./build_web.sh --wasm`.
+`./build_web.sh --wasm`. The app's code passes Flutter's WebAssembly dry run.
 
 ### 2. Try it locally
 
@@ -339,6 +361,9 @@ don't post the URL anywhere public.
 | Old version after uploading a new build | Hard-reload: **Ctrl+Shift+R** (Windows) / **⌘⇧R** (Mac). |
 | *Can't reach Supabase…* | The free project may be paused (see [SUPABASE_USAGE.md](SUPABASE_USAGE.md#5-the-one-thing-to-watch-pausing)), or an ad/tracker blocker is blocking `*.supabase.co`. Allow it for your site. |
 | Check buttons greyed out | Expected on the web; run checks from the desktop app. |
+| *Unlocking…* takes ages (tens of seconds) | The page isn't on HTTPS. Browsers only give fast Web Crypto to `https://` pages and `localhost`; elsewhere the master-password math runs in slow JavaScript. Host over HTTPS (Cloudflare Pages, Netlify… do by default). |
+| Asked for the master password on every visit | By design: the browser never stores it. The desktop apps can remember it (🛡 Security). |
+| Signed out after closing the tab | *Sign me out when I close the browser* is on (sign-in screen or 🛡 Security). |
 | Want to forget the saved URL/key in a browser | Header → server icon (*Supabase project settings*), or clear the site's data in the browser settings. |
 
 ---

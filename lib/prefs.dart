@@ -22,6 +22,8 @@ class Prefs {
   static const _kShowSecrets = 'show_secrets';
   static const _kSortColumn = 'sort_column';
   static const _kSortAsc = 'sort_asc';
+  static const _kSignOutOnClose = 'sign_out_on_browser_close';
+  static const _kSchedule = 'check_schedule';
 
   // ---- Supabase connection -----------------------------------------------
 
@@ -58,4 +60,20 @@ class Prefs {
 
   static bool get sortAsc => _p?.getBool(_kSortAsc) ?? true;
   static set sortAsc(bool v) => _p?.setBool(_kSortAsc, v);
+
+  // ---- security & scheduling ---------------------------------------------
+
+  /// Web: keep the sign-in session in sessionStorage, so closing the tab or
+  /// browser signs you out (see `platform/auth_storage_web.dart`).
+  static bool get signOutOnBrowserClose =>
+      _p?.getBool(_kSignOutOnClose) ?? false;
+  static Future<void> setSignOutOnBrowserClose(bool v) async =>
+      _p?.setBool(_kSignOutOnClose, v);
+
+  /// Desktop: the scheduled check as JSON (see `CheckSchedule.encode`), or
+  /// null when none is set up. The OS holds the real schedule; this copy
+  /// fills the dialog and tells a scheduled run whether it was a one-off.
+  static String? get checkSchedule => _p?.getString(_kSchedule);
+  static Future<void> setCheckSchedule(String? json) async =>
+      json == null ? _p?.remove(_kSchedule) : _p?.setString(_kSchedule, json);
 }

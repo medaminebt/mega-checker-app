@@ -159,15 +159,19 @@ class CsvImport {
     'storage_total_bytes',
     'storage_used_gb',
     'storage_unused_gb',
+    'storage_rubbish_bytes',
+    'storage_versions_bytes',
   ];
 
   /// One row per account, then a TOTAL row adding up storage across the
   /// accounts that have been measured. (Import skips the TOTAL row.)
   static String toCsvString(List<Account> rows) {
     String ts(DateTime? d) => d == null ? '' : d.toUtc().toIso8601String();
-    var used = 0, total = 0, free = 0, measured = 0;
+    var used = 0, total = 0, free = 0, measured = 0, bin = 0, versions = 0;
     final data = <List<String>>[exportHeader];
     for (final r in rows) {
+      bin += r.storageRubbishBytes ?? 0;
+      versions += r.storageVersionsBytes ?? 0;
       final s = r.storage;
       if (s != null) {
         used += s.usedBytes;
@@ -187,6 +191,8 @@ class CsvImport {
         r.storageTotalBytes?.toString() ?? '',
         s == null ? '' : gb(s.usedBytes),
         s == null ? '' : gb(s.freeBytes),
+        r.storageRubbishBytes?.toString() ?? '',
+        r.storageVersionsBytes?.toString() ?? '',
       ]);
     }
     data.add([
@@ -201,6 +207,8 @@ class CsvImport {
       '$total',
       gb(used),
       gb(free),
+      '$bin',
+      '$versions',
     ]);
     return Csv(lineDelimiter: '\n').encode(data);
   }

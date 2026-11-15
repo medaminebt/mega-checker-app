@@ -18,7 +18,11 @@ import 'package:mega_keepalive/mega_service.dart';
 import 'package:mega_keepalive/models.dart';
 import 'package:mega_keepalive/prefs.dart';
 import 'package:mega_keepalive/screens/home_page.dart';
+import 'package:mega_keepalive/platform/desktop.dart';
+import 'package:mega_keepalive/screens/mfa_screens.dart';
 import 'package:mega_keepalive/screens/sign_in_screen.dart';
+import 'package:mega_keepalive/screens/vault_screens.dart';
+import 'package:mega_keepalive/security/security_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test/support/memory_repository.dart';
@@ -27,6 +31,7 @@ const _outDir = 'docs/screenshots';
 const _pixelRatio = 2.0; // retina-sharp
 const _margin = 40.0; // room for the window shadow
 const _gib = 1024 * 1024 * 1024;
+const _mib = 1024 * 1024;
 
 // ---- fonts -------------------------------------------------------------------
 
@@ -83,6 +88,8 @@ List<Account> _sampleAccounts() {
       lastLoginAt: ago(days: 2, hours: 3),
       storageUsedBytes: (16.4 * _gib).round(),
       storageTotalBytes: 20 * _gib,
+      storageRubbishBytes: (1.8 * _gib).round(),
+      storageVersionsBytes: 340 * _mib,
       uploadFolderUrl: 'https://mega.nz/filerequest/Xq7Lp2Ab',
       notes: 'Family photos 2019–2024\nRenew Pro in March',
     ),
@@ -94,6 +101,8 @@ List<Account> _sampleAccounts() {
       lastLoginAt: ago(hours: 5),
       storageUsedBytes: (7.2 * _gib).round(),
       storageTotalBytes: 20 * _gib,
+      storageRubbishBytes: 0,
+      storageVersionsBytes: 96 * _mib,
       uploadFolderUrl: 'https://mega.nz/filerequest/Rk3Tz9Qw',
       notes: 'Client projects',
     ),
@@ -104,6 +113,8 @@ List<Account> _sampleAccounts() {
       lastLoginAt: ago(days: 41),
       storageUsedBytes: (19.1 * _gib).round(),
       storageTotalBytes: 20 * _gib,
+      storageRubbishBytes: (4.2 * _gib).round(),
+      storageVersionsBytes: (1.1 * _gib).round(),
       notes: 'Password changed?',
     ),
     Account(
@@ -114,6 +125,8 @@ List<Account> _sampleAccounts() {
       lastLoginAt: ago(days: 6),
       storageUsedBytes: (2.6 * _gib).round(),
       storageTotalBytes: 20 * _gib,
+      storageRubbishBytes: 0,
+      storageVersionsBytes: 0,
       uploadFolderUrl: 'https://mega.nz/filerequest/Mv8Hc4Ls',
     ),
     Account(
@@ -123,6 +136,8 @@ List<Account> _sampleAccounts() {
       lastLoginAt: ago(days: 12),
       storageUsedBytes: (11.8 * _gib).round(),
       storageTotalBytes: 20 * _gib,
+      storageRubbishBytes: 512 * _mib,
+      storageVersionsBytes: 12 * _mib,
       notes: 'Design files',
     ),
     Account(
@@ -133,6 +148,8 @@ List<Account> _sampleAccounts() {
       lastLoginAt: ago(days: 1),
       storageUsedBytes: (0.4 * _gib).round(),
       storageTotalBytes: 20 * _gib,
+      storageRubbishBytes: 0,
+      storageVersionsBytes: 0,
       uploadFolderUrl: 'https://mega.nz/filerequest/Pw2Yn6Dg',
     ),
     Account(email: 'documents@example.net', password: 'x'),
@@ -401,13 +418,42 @@ Future<void> _save(WidgetTester tester, String name) async {
   print('wrote $_outDir/$name.png');
 }
 
-Widget _home(MemoryAccountsRepository repo) => HomePage(
+/// Desktop shots show the Scheduled checks and Security header buttons.
+Widget _home(MemoryAccountsRepository repo, {bool desktop = true}) => HomePage(
   repository: repo,
   userEmail: 'me@example.com',
   projectHost: 'abcdefghijkl.supabase.co',
   onSignOut: () async {},
   onChangeProject: () async {},
+  security: desktop ? _SampleSecurity() : null,
 );
+
+/// Stand-in for the app gate's security settings (nothing is stored).
+class _SampleSecurity implements SecurityController {
+  @override
+  String get twoFactorSummary => 'On · authenticator app';
+  @override
+  Future<String?> changeMasterPassword(String current, String next) async =>
+      null;
+  @override
+  Future<(String?, String?)> newRecoveryKey() async => (null, null);
+  @override
+  bool get canRemember => true;
+  @override
+  String get deviceName => 'this Mac';
+  @override
+  String get rememberStoreName => 'your macOS login Keychain';
+  @override
+  Future<bool> isRemembered() async => true;
+  @override
+  Future<String?> setRemembered(bool on) async => null;
+  @override
+  bool get canSignOutOnBrowserClose => false;
+  @override
+  bool get signOutOnBrowserClose => false;
+  @override
+  Future<void> setSignOutOnBrowserClose(bool on) async {}
+}
 
 // ---- screenshots -----------------------------------------------------------------
 
@@ -538,6 +584,91 @@ void main() {
     await _save(tester, 'paste-list');
   });
 
+  _shot('schedule', (tester) async {
+    await _prefs({
+      'check_schedule':
+          '{"kind":"weekly","weekday":1,"day_of_month":1,"hour":10,"minute":0}',
+    });
+    AppInstance.debugExecutable =
+        '/Applications/mega-checker-app.app/Contents/MacOS/mega-checker-app';
+    try {
+      final repo = MemoryAccountsRepository(_sampleAccounts());
+      await _show(
+        tester,
+        _MacWindow.outer(desktop),
+        _MacWindow(size: desktop, child: _materialApp(_home(repo), desktop)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Scheduled checks'));
+      await tester.pump();
+      // The dialog asks the OS whether a schedule is installed and reads the
+      // run log (real file I/O, one step after another).
+      for (var i = 0; i < 6; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      await _save(tester, 'schedule');
+    } finally {
+      AppInstance.debugExecutable = null;
+    }
+  });
+  _shot('two-factor', (tester) async {
+    await _prefs();
+    const size = Size(1100, 900);
+    await _show(
+      tester,
+      _MacWindow.outer(size),
+      _MacWindow(
+        size: size,
+        child: _materialApp(
+          MfaEnrolScreen(
+            // Made-up secret (RFC 4648 example text), not a real account.
+            onStart: () async => const TotpSetup(
+              factorId: 'sample',
+              uri:
+                  'otpauth://totp/mega-checker-app:me%40example.com'
+                  '?secret=JBSWY3DPEHPK3PXP&issuer=mega-checker-app',
+              secret: 'JBSWY3DPEHPK3PXP',
+            ),
+            onVerify: (_, _) async => null,
+            onSignOut: () {},
+            email: 'me@example.com',
+          ),
+          size,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _save(tester, 'two-factor');
+  });
+  _shot('unlock', (tester) async {
+    await _prefs();
+    const size = Size(1100, 760);
+    await _show(
+      tester,
+      _MacWindow.outer(size),
+      _MacWindow(
+        size: size,
+        child: _materialApp(
+          UnlockScreen(
+            onUnlock: (_, _) async => null,
+            onRecover: (_, _, _) async => null,
+            onReset: () async => null,
+            onSignOut: () {},
+            email: 'me@example.com',
+            canRemember: true,
+            deviceName: 'this Mac',
+          ),
+          size,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _save(tester, 'unlock');
+  });
   _shot('sign-in', (tester) async {
     await _prefs({'last_sign_in_email': 'me@example.com'});
     const size = Size(1100, 760);
@@ -568,7 +699,10 @@ void main() {
     await _show(
       tester,
       _Phone.outer(size),
-      _Phone(size: size, child: _materialApp(_home(repo), size)),
+      _Phone(
+        size: size,
+        child: _materialApp(_home(repo, desktop: false), size),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.drag(

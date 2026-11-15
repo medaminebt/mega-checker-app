@@ -55,6 +55,16 @@ class SupabaseAccountsRepository implements AccountsRepository {
   Future<void> delete(String id) async {
     await client.from(table).delete().eq('id', id);
   }
+
+  /// Empty every password and MEGA key of the signed-in user (vault reset
+  /// after losing both the master password and the recovery key). Emails,
+  /// notes, upload links and history stay.
+  Future<void> clearSecrets() async {
+    await client
+        .from(table)
+        .update({'password': '', 'mega_key': ''})
+        .not('id', 'is', null);
+  }
 }
 
 /// Turn Supabase / network errors into something actionable.
@@ -76,13 +86,18 @@ String describeError(Object e) {
     if (e.code == 'PGRST205' ||
         e.code == '42P01' ||
         msg.contains('Could not find the table')) {
+      if (msg.contains('mega_vault')) {
+        return 'Table "mega_vault" not found — this version adds encryption '
+            'and 2FA. Run supabase/schema.sql again in the Supabase SQL Editor '
+            '(see SUPABASE_SETUP.md, "Updating").';
+      }
       return 'Table "mega_accounts" not found — run supabase/schema.sql in the '
           'Supabase SQL Editor (see SUPABASE_SETUP.md).';
     }
-    if (e.code == 'PGRST204' && msg.contains('upload_folder_url')) {
-      return 'Your Supabase table has no "upload_folder_url" column yet — run '
+    if (e.code == 'PGRST204') {
+      return 'Your Supabase table is missing a column this version uses — run '
           'supabase/schema.sql again in the SQL Editor (see '
-          'SUPABASE_SETUP.md, "Updating").';
+          'SUPABASE_SETUP.md, "Updating"). ($msg)';
     }
     if (e.code == '23505') {
       return 'That email is already in your list.';
@@ -106,6 +121,20 @@ String describeError(Object e) {
     if (m.contains('email not confirmed')) {
       return 'This Supabase user is not confirmed yet — confirm it in the '
           'dashboard (Authentication › Users).';
+    }
+    if (m.contains('invalid totp') ||
+        m.contains('invalid mfa') ||
+        e.code == 'mfa_verification_failed') {
+      return "That code didn't work. Use the newest 6-digit code, and check "
+          "that your phone's clock is set automatically.";
+    }
+    if (m.contains('mfa') && m.contains('disabled')) {
+      return 'Authenticator-app 2FA is turned off for this Supabase project. '
+          'Turn it on: Authentication › Multi-Factor › TOTP (App '
+          'Authenticator) › Enabled.';
+    }
+    if (m.contains('aal2')) {
+      return 'Enter your 2FA code first (sign out and sign in again).';
     }
     return e.message;
   }

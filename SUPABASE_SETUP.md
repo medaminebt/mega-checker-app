@@ -8,7 +8,8 @@ You'll end up with:
 
 | What | Where it's used |
 |---|---|
-| A table called `mega_accounts`, protected by Row Level Security | holds emails, passwords, MEGA keys, last login, storage |
+| A table called `mega_accounts`, protected by Row Level Security | holds emails, encrypted passwords and MEGA keys, last login, storage |
+| A table called `mega_vault` | your encrypted data key (needs your master password to be useful) |
 | One Supabase **user** (an email + password you choose) | you sign in to the app with it |
 | The **Project URL** + **publishable key** | pasted into the app once |
 
@@ -43,9 +44,15 @@ What the script does:
 
 - creates `mega_accounts` (email, password, mega_key, notes,
   upload_folder_url, last_login_at, last_checked_at, last_status, last_error,
-  storage_used_bytes, storage_total_bytes, …),
+  storage_used_bytes, storage_total_bytes, storage_rubbish_bytes,
+  storage_versions_bytes, …),
+- creates `mega_vault`, one row per user holding the **encrypted** key that
+  protects your MEGA passwords (see [Security notes](#security-notes)),
 - turns on **Row Level Security** so a signed-in user can only read and write
   **their own** rows,
+- adds a **2FA rule** (a *restrictive* policy): once you've set up an
+  authenticator app, both tables answer only sessions that also passed the
+  6-digit code (`aal2`), so your Supabase password alone gets nothing,
 - removes all access for anonymous requests (the publishable key alone can't
   read anything).
 
@@ -60,9 +67,16 @@ the whole [`supabase/schema.sql`](supabase/schema.sql) again and click
 | App version | Database change |
 |---|---|
 | Upload folder URL | adds `upload_folder_url` (text, default empty) |
+| 2FA, master password, bin / versions, scheduled checks | adds `mega_vault`, the 2FA policies, `storage_rubbish_bytes` and `storage_versions_bytes` |
 
-If you skip this, the app still loads and checks accounts. Only saving an
-upload folder URL fails, with a message pointing here.
+**This version needs the update:** after sign-in it opens your encryption
+settings, and stops with *Table "mega_vault" not found* until you've re-run
+the script. Your accounts are untouched; their passwords are encrypted the
+first time you unlock.
+
+> Once you turn on 2FA in the new app, **older copies of the app** (on
+> another computer, or an old web deployment) see an empty list, because
+> they can't pass the 2FA rule. Update every copy.
 
 ## 3. Create your app user
 
@@ -93,7 +107,13 @@ This just closes the door completely.)
 > **service_role** key in the app. They bypass all security. The app refuses
 > them anyway.
 
-## 6. Connect the app
+## 6. Check that 2FA is allowed (it is by default)
+
+**Authentication → Multi-Factor** (on some dashboards: *Sign In / Providers
+→ Multi-Factor*) → **TOTP (App Authenticator)** should be **Enabled**. It's
+free on every plan. The app uses it to make signing in need a 6-digit code.
+
+## 7. Connect the app
 
 1. Start the app (see [README.md](README.md#quick-start)).
 2. The first screen is **Connect to Supabase**. Paste the **Project URL** and
@@ -101,7 +121,16 @@ This just closes the door completely.)
    saves them on this computer (or in this browser, for the web version), so
    you only do this once per device.
 3. **Sign in** with the user from step 3.
-4. Click **Paste list** and paste your MEGA accounts, one per line:
+4. **Turn on two-step sign-in**: scan the QR code with an authenticator app
+   on your phone (Google Authenticator, Microsoft Authenticator, 1Password,
+   Bitwarden…) and type the 6-digit code. From now on every sign-in asks for
+   a code.
+5. **Set a master password** and **save the recovery key** it shows (password
+   manager, or on paper). The master password encrypts your MEGA passwords
+   and keys on your device; Supabase never sees it. On a Mac or PC you can
+   tick **Remember on this Mac / PC** so the app opens without it (scheduled
+   checks need this).
+6. Click **Paste list** and paste your MEGA accounts, one per line:
 
    ```
    first@gmail.com:Password1
@@ -129,13 +158,26 @@ the raw data.
 
 ## Security notes
 
-- Passwords and MEGA keys are stored **as plain text** in the table. They're
-  protected by Row Level Security and your Supabase sign-in, and Supabase
-  encrypts data at rest. But anyone who can open your Supabase dashboard
-  (you) or who has the database password can read them. Protect your
-  Supabase/GitHub login with **2FA**.
-- If you'd like client-side encryption (a master password, so Supabase only
-  ever sees ciphertext), that can be added later.
+- **Passwords and MEGA keys are encrypted in the app** before they're saved
+  (AES-256-GCM). The key comes from your **master password** (PBKDF2-SHA256,
+  600 000 rounds) and never leaves your device. The table only holds
+  `enc1:…` text, so someone who gets into your Supabase dashboard or database
+  sees emails, notes and dates, but **not** the passwords or keys.
+- **Recovery key:** the data key is also encrypted with a random recovery key
+  shown once when you set the master password. Keep it safe. If you lose both
+  the master password and the recovery key, nobody can decrypt the stored
+  passwords; the unlock screen's **Lost both?** erases them so you can start
+  again (emails, notes and history stay).
+- **2FA:** with an authenticator app set up, a stolen Supabase password isn't
+  enough to sign in, and the database itself refuses sessions without the
+  code. Lost the phone? Delete the factor in **Authentication → Users → your
+  user**, then sign in and set it up again.
+- **Remember on this Mac / PC** keeps the data key in the macOS Keychain or a
+  DPAPI-encrypted file on Windows. Anything running as your user account on
+  that computer could read it, so only tick it on your own computer. Signing
+  out forgets it.
+- Still protect your **Supabase and GitHub logins with 2FA**, and keep
+  exported CSV files private: they contain the passwords in clear text.
 
 ## Changing project / resetting the app
 
@@ -150,3 +192,8 @@ the raw data.
 
   Windows: delete the folder `%APPDATA%\com.megakeepalive\mega-checker-app\`.
   Web: clear the site's data in your browser's settings.
+- **Forget a remembered master password by hand**: macOS
+  `security delete-generic-password -s mega-checker-app` (repeat until it says
+  *could not be found*); Windows: delete `%APPDATA%\mega-checker-app\keys\`.
+  The scheduled-check log and lock files live next to it
+  (`~/Library/Application Support/mega-checker-app/` on macOS).

@@ -14,6 +14,7 @@ class AccountCols {
   static const int passwordFlex = 2;
   static const int keyFlex = 2;
   static const double login = 224;
+  static const double bin = 122;
   static const int uploadFlex = 2;
   static const int notesFlex = 2;
   static const double actions = 84;
@@ -21,7 +22,7 @@ class AccountCols {
   static const EdgeInsets padding = EdgeInsets.symmetric(horizontal: 18);
 
   /// Below this width the table scrolls sideways instead of squeezing.
-  static const double minTableWidth = 1120;
+  static const double minTableWidth = 1230;
 }
 
 /// One editable account row. Email / password / MEGA key / upload folder URL
@@ -40,6 +41,8 @@ class AccountRow extends StatefulWidget {
     required this.onDelete,
     required this.onOpenUpload,
     this.checkTooltip = 'Check this account now',
+    this.onFreeUp,
+    this.freeUpTooltip = 'Free up space',
   });
 
   final Account account;
@@ -56,6 +59,11 @@ class AccountRow extends StatefulWidget {
   final String checkTooltip;
   final VoidCallback onDelete;
   final void Function(Uri uri) onOpenUpload;
+
+  /// Empty the Rubbish Bin / delete old versions. Null when this build can't
+  /// run MEGAcmd (web).
+  final void Function(FreeUpAction action)? onFreeUp;
+  final String freeUpTooltip;
 
   @override
   State<AccountRow> createState() => _AccountRowState();
@@ -167,6 +175,8 @@ class _AccountRowState extends State<AccountRow> {
             ),
             const SizedBox(width: AccountCols.gap),
             SizedBox(width: AccountCols.login, child: _loginCell(a)),
+            const SizedBox(width: AccountCols.gap),
+            SizedBox(width: AccountCols.bin, child: _binCell(a)),
             const SizedBox(width: AccountCols.gap),
             Expanded(flex: AccountCols.uploadFlex, child: _uploadCell(a)),
             const SizedBox(width: AccountCols.gap),
@@ -432,6 +442,116 @@ class _AccountRowState extends State<AccountRow> {
         mainAxisSize: MainAxisSize.min,
         children: [loginText, const SizedBox(height: 5), storageLine],
       ),
+    );
+  }
+
+  /// Rubbish Bin and old-versions sizes, plus a menu to free that space.
+  Widget _binCell(Account a) {
+    final bin = a.storageRubbishBytes;
+    final versions = a.storageVersionsBytes;
+
+    Widget line(IconData icon, String label, int? bytes) {
+      final has = bytes != null && bytes > 0;
+      return Row(
+        children: [
+          Icon(
+            icon,
+            size: 13,
+            color: has ? AppTheme.textSecondary : AppTheme.textMuted,
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              bytes == null ? '$label —' : Fmt.bytes(bytes),
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: AppTheme.font,
+                fontSize: 11.5,
+                fontWeight: has ? FontWeight.w500 : FontWeight.w400,
+                color: has ? AppTheme.textPrimary : AppTheme.textMuted,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    String size(int? b) => b == null ? 'not measured yet' : Fmt.bytes(b);
+    // Unknown (never measured) counts as "maybe something to free".
+    bool worth(int? b) => b == null || b > 0;
+    final onFreeUp = widget.onFreeUp;
+    final canFree =
+        onFreeUp != null && widget.enabled && (worth(bin) || worth(versions));
+
+    final menu = PopupMenuButton<FreeUpAction>(
+      enabled: canFree,
+      tooltip: onFreeUp == null ? widget.freeUpTooltip : 'Free up space',
+      padding: EdgeInsets.zero,
+      iconSize: 17,
+      constraints: const BoxConstraints(minWidth: 240, maxWidth: 380),
+      icon: Icon(
+        Icons.cleaning_services_rounded,
+        color: canFree ? AppTheme.megaBlueSoft : AppTheme.stateHover,
+      ),
+      onSelected: (action) => onFreeUp?.call(action),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: FreeUpAction.emptyRubbishBin,
+          enabled: worth(bin),
+          child: Row(
+            children: [
+              const Icon(Icons.delete_sweep_rounded, size: 18),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  'Empty Rubbish Bin'
+                  '${bin == null ? '' : ' (${Fmt.bytes(bin)})'}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: FreeUpAction.deleteVersions,
+          enabled: worth(versions),
+          child: Row(
+            children: [
+              const Icon(Icons.history_rounded, size: 18),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  'Delete old file versions'
+                  '${versions == null ? '' : ' (${Fmt.bytes(versions)})'}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    return Row(
+      children: [
+        Expanded(
+          child: Tooltip(
+            message:
+                'Rubbish Bin: ${size(bin)}\nOld file versions: '
+                '${size(versions)}\nBoth count towards the used storage.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                line(Icons.delete_sweep_rounded, 'Bin', bin),
+                const SizedBox(height: 6),
+                line(Icons.history_rounded, 'Versions', versions),
+              ],
+            ),
+          ),
+        ),
+        SizedBox.square(dimension: 34, child: menu),
+      ],
     );
   }
 
