@@ -163,10 +163,12 @@ MEGAcmd for Windows must be installed on that PC too.
   If MEGAcmd is installed somewhere else, add that folder to your Path.
 - **Window:** opens at 1440 × 880 (shrunk to fit smaller screens), minimum
   960 × 600; narrower windows scroll the table sideways.
-- The Windows build was prepared on a Mac and **hasn't been compiled or run
-  on Windows yet**. If `flutter build windows` or a check fails, the most
-  likely places are `windows/runner/main.cpp` (window size code) and
-  `lib/platform/native_io.dart` (MEGAcmd paths). Copy the error text.
+- The Windows app **builds on GitHub Actions** (`windows-latest`, see
+  `.github/workflows/release.yml`) but **hasn't been run on a real PC yet**.
+  If a check fails, the most likely place is `lib/platform/native_io.dart`
+  (MEGAcmd paths). Copy the error text.
+- **No Windows PC to build on?** Download `mega-checker-app-windows-x64.zip`
+  from the repo's **Releases** page instead.
 - MEGAcmd may open its own server window the first time a check runs. Leave it
   open (or minimised) while checks run.
 - Optional, for a real installer: the [`msix`](https://pub.dev/packages/msix)
