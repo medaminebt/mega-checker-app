@@ -1,9 +1,7 @@
 #!/bin/bash
-# Always launch on the macOS desktop target.
+# Run the app from source on the macOS desktop (debug mode, hot reload).
 #
-# Why this script: bare `flutter run` may target your iPhone / iPad (the other
-# connected devices), but this is a macOS-only desktop app with no iOS support
-# and no CocoaPods — that combination errors out in the terminal. The `-d macos`
-# flag below avoids that entirely.
+# Why `-d macos`: a bare `flutter run` may pick a connected iPhone / iPad, but
+# this is a macOS-only desktop app.
 cd "$(dirname "$0")" || exit 1
 exec flutter run -d macos --debug "$@"

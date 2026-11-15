@@ -1,2 +1,8 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Apple Silicon only (M1/M2/M3/M4 Macs). With Xcode 27, `lipo -verify_arch`
+// accepts a single architecture, which breaks Flutter 3.44's universal
+// (arm64 + x86_64) release build. Remove this line to build a universal app
+// once Flutter/Xcode are fixed — or if you need to run it on an Intel Mac.
+EXCLUDED_ARCHS = x86_64

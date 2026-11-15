@@ -3,8 +3,8 @@ import 'dart:io';
 import 'models.dart';
 
 /// Drives MEGAcmd to test an account: logout (clean slate) → login → touch the
-/// account (whoami + ls) so activity registers → logout. Returns a classified
-/// result; the caller records it into the account's notes.
+/// account (whoami + df + ls) so activity registers and storage is read →
+/// logout. Returns a classified result; the caller stores it in Supabase.
 class MegaService {
   // Where the mega-* tools usually live on an Apple-Silicon Mac. The app may be
   // launched from Finder with a minimal PATH, so we check explicit paths first.
@@ -41,8 +41,11 @@ class MegaService {
     return '${_searchDirs.join(':')}:$existing';
   }
 
-  static Future<ProcessResult?> _run(String cmd, List<String> args,
-      {int timeoutSec = 90}) async {
+  static Future<ProcessResult?> _run(
+    String cmd,
+    List<String> args, {
+    int timeoutSec = 90,
+  }) async {
     final exe = _resolve(cmd);
     if (exe == null) return null;
     try {
@@ -100,11 +103,16 @@ class MegaService {
     final email = acct.email;
 
     if (!_emailRe.hasMatch(email)) {
-      return LoginResult(LoginOutcome.invalidEmail, 'invalid email address format');
+      return LoginResult(
+        LoginOutcome.invalidEmail,
+        'invalid email address format',
+      );
     }
     if (!isInstalled) {
-      return LoginResult(LoginOutcome.megacmdMissing,
-          'MEGAcmd not found — install with: brew install --cask megacmd');
+      return LoginResult(
+        LoginOutcome.megacmdMissing,
+        'MEGAcmd not found — install with: brew install --cask megacmd',
+      );
     }
 
     // Make sure the background server is up (detached) before we pipe commands.
@@ -122,11 +130,20 @@ class MegaService {
     final lower = out.toLowerCase();
 
     if (res.exitCode == 0 && !lower.contains('login failed')) {
-      // Read-only actions that unambiguously count as activity.
+      // Read-only actions that unambiguously count as activity. `df` also
+      // gives us the account's used / total storage.
       await _run('mega-whoami', []);
+      final df = await _run('mega-df', [], timeoutSec: 60);
+      final storage = df == null
+          ? null
+          : parseDfOutput('${df.stdout}\n${df.stderr}');
       await _run('mega-ls', ['/']);
       await _run('mega-logout', [], timeoutSec: 60);
-      return LoginResult(LoginOutcome.success, 'logged in successfully');
+      return LoginResult(
+        LoginOutcome.success,
+        'logged in successfully',
+        storage: storage,
+      );
     }
 
     // Failed: classify, clean up any partial session.
@@ -143,5 +160,32 @@ class MegaService {
       return LoginResult(LoginOutcome.needs2fa, detail);
     }
     return LoginResult(LoginOutcome.error, detail);
+  }
+
+  // ---- storage -------------------------------------------------------------
+
+  // `mega-df` (no -h) prints sizes in bytes, e.g.
+  //   USED STORAGE:          1234567                         5.88% of 21474836480
+  // The used column is padded/truncated to 12 chars by MEGAcmd, so ≥ ~1 TB
+  // shows up as "21...552" — in that case fall back to percent × total.
+  static final _dfRe = RegExp(
+    r'USED STORAGE:\s*(\S+)\s+([\d.]+|-+)%\s+of\s+(\d+)',
+    caseSensitive: false,
+  );
+
+  /// Parse the output of `mega-df` into used / total bytes. Returns null when
+  /// the output doesn't contain the `USED STORAGE` line (e.g. not logged in).
+  static StorageInfo? parseDfOutput(String output) {
+    final m = _dfRe.firstMatch(output);
+    if (m == null) return null;
+    final total = int.tryParse(m.group(3)!);
+    if (total == null) return null;
+    var used = int.tryParse(m.group(1)!);
+    if (used == null) {
+      final pct = double.tryParse(m.group(2)!);
+      if (pct == null) return null;
+      used = (total * pct / 100).round();
+    }
+    return StorageInfo(used, total);
   }
 }

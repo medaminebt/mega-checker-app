@@ -1,20 +1,137 @@
-/// One row of the accounts database (the CSV). `notes` is mutable because the
-/// app appends timestamped login results to it and writes it back to the CSV.
+/// One MEGA account — one row of the `public.mega_accounts` table in Supabase.
+///
+/// Fields are mutable because the table rows are edited inline and the app
+/// writes login results back into them.
 class Account {
+  /// Supabase row id (uuid). `null` until the row has been inserted.
+  String? id;
+
   String email;
   String password;
+
+  /// MEGA recovery key — typed in by hand, the app never derives it.
+  String megaKey;
+
+  /// Free-text notes.
   String notes;
 
-  /// Transient UI state for the current run — NOT written to the CSV.
-  /// One of: '—', 'running', 'ok', or a short failure label.
-  String lastResult;
+  /// Last **successful** login.
+  DateTime? lastLoginAt;
+
+  /// Last login attempt (successful or not).
+  DateTime? lastCheckedAt;
+
+  /// `'ok'`, `'failed'` or `null` (never checked).
+  String? lastStatus;
+
+  /// Human-readable reason of the last failure.
+  String? lastError;
+
+  /// Storage figures read with `mega-df` on the last successful login.
+  int? storageUsedBytes;
+  int? storageTotalBytes;
+
+  /// Transient UI state: a check is in progress for this account.
+  bool running = false;
 
   Account({
+    this.id,
     required this.email,
     required this.password,
+    this.megaKey = '',
     this.notes = '',
-    this.lastResult = '—',
+    this.lastLoginAt,
+    this.lastCheckedAt,
+    this.lastStatus,
+    this.lastError,
+    this.storageUsedBytes,
+    this.storageTotalBytes,
   });
+
+  AccountStatus get status {
+    if (running) return AccountStatus.running;
+    switch (lastStatus) {
+      case 'ok':
+        return AccountStatus.ok;
+      case 'failed':
+        return AccountStatus.failed;
+      default:
+        return AccountStatus.untested;
+    }
+  }
+
+  StorageInfo? get storage =>
+      (storageUsedBytes != null && storageTotalBytes != null)
+      ? StorageInfo(storageUsedBytes!, storageTotalBytes!)
+      : null;
+
+  /// MEGA addresses are case-insensitive; store them trimmed + lower-cased so
+  /// the `(user_id, email)` unique constraint catches duplicates.
+  static String normaliseEmail(String email) => email.trim().toLowerCase();
+
+  // ---- Supabase row mapping ----------------------------------------------
+
+  factory Account.fromRow(Map<String, dynamic> r) {
+    DateTime? ts(String k) {
+      final v = r[k];
+      return v == null ? null : DateTime.tryParse(v.toString())?.toLocal();
+    }
+
+    int? big(String k) {
+      final v = r[k];
+      if (v == null) return null;
+      if (v is int) return v;
+      return int.tryParse(v.toString());
+    }
+
+    return Account(
+      id: r['id'] as String?,
+      email: (r['email'] ?? '') as String,
+      password: (r['password'] ?? '') as String,
+      megaKey: (r['mega_key'] ?? '') as String,
+      notes: (r['notes'] ?? '') as String,
+      lastLoginAt: ts('last_login_at'),
+      lastCheckedAt: ts('last_checked_at'),
+      lastStatus: r['last_status'] as String?,
+      lastError: r['last_error'] as String?,
+      storageUsedBytes: big('storage_used_bytes'),
+      storageTotalBytes: big('storage_total_bytes'),
+    );
+  }
+
+  /// Columns sent when inserting a new row (`user_id` defaults to the
+  /// signed-in user on the database side).
+  Map<String, dynamic> toInsertRow() => {
+    'email': normaliseEmail(email),
+    'password': password,
+    'mega_key': megaKey,
+    'notes': notes,
+  };
+}
+
+enum AccountStatus { untested, running, ok, failed }
+
+/// Used / total storage of a MEGA account, in bytes.
+class StorageInfo {
+  final int usedBytes;
+  final int totalBytes;
+
+  const StorageInfo(this.usedBytes, this.totalBytes);
+
+  double get fraction =>
+      totalBytes <= 0 ? 0 : (usedBytes / totalBytes).clamp(0.0, 1.0);
+
+  @override
+  bool operator ==(Object other) =>
+      other is StorageInfo &&
+      other.usedBytes == usedBytes &&
+      other.totalBytes == totalBytes;
+
+  @override
+  int get hashCode => Object.hash(usedBytes, totalBytes);
+
+  @override
+  String toString() => 'StorageInfo($usedBytes / $totalBytes)';
 }
 
 /// Outcome of a single login attempt.
@@ -31,43 +148,28 @@ class LoginResult {
   final LoginOutcome outcome;
   final String message; // human-readable detail
 
-  LoginResult(this.outcome, this.message);
+  /// Storage read after a successful login (null if `mega-df` failed).
+  final StorageInfo? storage;
+
+  LoginResult(this.outcome, this.message, {this.storage});
 
   bool get ok => outcome == LoginOutcome.success;
 
-  /// Short phrase appended to the account's notes after the timestamp.
-  String get noteText {
+  /// Short reason stored in `last_error` and shown in the status tooltip.
+  String get errorText {
     switch (outcome) {
       case LoginOutcome.success:
-        return 'login OK';
+        return '';
       case LoginOutcome.wrongCredentials:
-        return 'login FAILED: wrong email or password';
+        return 'Wrong email or password';
       case LoginOutcome.invalidEmail:
-        return 'login FAILED: invalid email address';
+        return 'Invalid email address';
       case LoginOutcome.needs2fa:
-        return 'login FAILED: account needs 2FA';
+        return 'Account needs 2FA';
       case LoginOutcome.megacmdMissing:
-        return 'login FAILED: MEGAcmd not installed';
+        return 'MEGAcmd not installed';
       case LoginOutcome.error:
-        return 'login FAILED: $message';
-    }
-  }
-
-  /// Short label for the result chip in the table.
-  String get chipLabel {
-    switch (outcome) {
-      case LoginOutcome.success:
-        return 'ok';
-      case LoginOutcome.wrongCredentials:
-        return 'wrong email/password';
-      case LoginOutcome.invalidEmail:
-        return 'invalid email';
-      case LoginOutcome.needs2fa:
-        return '2FA needed';
-      case LoginOutcome.megacmdMissing:
-        return 'MEGAcmd missing';
-      case LoginOutcome.error:
-        return 'error';
+        return message;
     }
   }
 }

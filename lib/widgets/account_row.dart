@@ -1,0 +1,364 @@
+import 'package:flutter/material.dart';
+
+import '../app_theme.dart';
+import '../format.dart';
+import '../models.dart';
+import 'badges.dart';
+
+/// Column geometry shared by the table header and the rows.
+class AccountCols {
+  static const double status = 112;
+  static const int emailFlex = 3;
+  static const int passwordFlex = 2;
+  static const int keyFlex = 3;
+  static const double login = 224;
+  static const int notesFlex = 2;
+  static const double actions = 84;
+  static const double gap = 12;
+  static const EdgeInsets padding = EdgeInsets.symmetric(horizontal: 18);
+}
+
+/// One editable account row. Email / password / MEGA key / notes are inline
+/// text fields; every edit is reported through [onFieldChanged] (column name
+/// in snake_case) and saved to Supabase by the page.
+class AccountRow extends StatefulWidget {
+  const AccountRow({
+    super.key,
+    required this.account,
+    required this.index,
+    required this.showSecrets,
+    required this.enabled,
+    required this.onFieldChanged,
+    required this.onCheck,
+    required this.onDelete,
+  });
+
+  final Account account;
+  final int index;
+  final bool showSecrets;
+
+  /// False while a check run is in progress (rows are read-only then).
+  final bool enabled;
+
+  final void Function(String column, String value) onFieldChanged;
+  final VoidCallback onCheck;
+  final VoidCallback onDelete;
+
+  @override
+  State<AccountRow> createState() => _AccountRowState();
+}
+
+class _AccountRowState extends State<AccountRow> {
+  late final _email = TextEditingController(text: widget.account.email);
+  late final _pass = TextEditingController(text: widget.account.password);
+  late final _key = TextEditingController(text: widget.account.megaKey);
+  late final _notes = TextEditingController(text: widget.account.notes);
+  final _emailF = FocusNode();
+  final _passF = FocusNode();
+  final _keyF = FocusNode();
+  final _notesF = FocusNode();
+  bool _hover = false;
+
+  @override
+  void didUpdateWidget(covariant AccountRow old) {
+    super.didUpdateWidget(old);
+    // Sync values changed elsewhere (e.g. a re-import), but never clobber a
+    // field the user is typing in.
+    void sync(TextEditingController c, FocusNode f, String v) {
+      if (!f.hasFocus && c.text != v) c.text = v;
+    }
+
+    sync(_email, _emailF, widget.account.email);
+    sync(_pass, _passF, widget.account.password);
+    sync(_key, _keyF, widget.account.megaKey);
+    sync(_notes, _notesF, widget.account.notes);
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_email, _pass, _key, _notes]) {
+      c.dispose();
+    }
+    for (final f in [_emailF, _passF, _keyF, _notesF]) {
+      f.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = widget.account;
+    final Color bg;
+    if (a.running) {
+      bg = AppTheme.megaBlue.withValues(alpha: 0.10);
+    } else if (_hover) {
+      bg = const Color(0xFF222222);
+    } else {
+      bg = widget.index.isOdd ? const Color(0xFF1F1F1F) : AppTheme.bgSurface;
+    }
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        color: bg,
+        padding: AccountCols.padding.copyWith(top: 9, bottom: 9),
+        child: Row(
+          children: [
+            SizedBox(
+              width: AccountCols.status,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: _statusBadge(a),
+              ),
+            ),
+            Expanded(
+              flex: AccountCols.emailFlex,
+              child: _field(
+                controller: _email,
+                focus: _emailF,
+                column: 'email',
+                hint: 'email@example.com',
+                style: AppTheme.body.copyWith(fontSize: 13.5),
+                onChanged: (v) => a.email = v,
+              ),
+            ),
+            const SizedBox(width: AccountCols.gap),
+            Expanded(
+              flex: AccountCols.passwordFlex,
+              child: _field(
+                controller: _pass,
+                focus: _passF,
+                column: 'password',
+                hint: 'password',
+                obscure: !widget.showSecrets,
+                style: AppTheme.mono,
+                onChanged: (v) => a.password = v,
+              ),
+            ),
+            const SizedBox(width: AccountCols.gap),
+            Expanded(
+              flex: AccountCols.keyFlex,
+              child: _field(
+                controller: _key,
+                focus: _keyF,
+                column: 'mega_key',
+                hint: 'paste MEGA key…',
+                obscure: !widget.showSecrets && _key.text.isNotEmpty,
+                style: AppTheme.mono.copyWith(fontSize: 12),
+                onChanged: (v) => a.megaKey = v,
+              ),
+            ),
+            const SizedBox(width: AccountCols.gap),
+            SizedBox(width: AccountCols.login, child: _loginCell(a)),
+            const SizedBox(width: AccountCols.gap),
+            Expanded(
+              flex: AccountCols.notesFlex,
+              child: _field(
+                controller: _notes,
+                focus: _notesF,
+                column: 'notes',
+                hint: 'notes',
+                style: AppTheme.caption.copyWith(color: AppTheme.textPrimary),
+                onChanged: (v) => a.notes = v,
+              ),
+            ),
+            const SizedBox(width: AccountCols.gap),
+            SizedBox(
+              width: AccountCols.actions,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _iconAction(
+                    tooltip: 'Check this account now',
+                    icon: Icons.play_arrow_rounded,
+                    color: AppTheme.megaBlueSoft,
+                    tint: AppTheme.megaBlue,
+                    onPressed: widget.enabled ? widget.onCheck : null,
+                  ),
+                  const SizedBox(width: 6),
+                  _iconAction(
+                    tooltip: 'Delete account',
+                    icon: Icons.delete_outline_rounded,
+                    color: AppTheme.textMuted,
+                    hoverColor: AppTheme.dangerSoft,
+                    onPressed: widget.enabled ? widget.onDelete : null,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field({
+    required TextEditingController controller,
+    required FocusNode focus,
+    required String column,
+    required String hint,
+    required TextStyle style,
+    required void Function(String) onChanged,
+    bool obscure = false,
+  }) {
+    return TextField(
+      controller: controller,
+      focusNode: focus,
+      enabled: widget.enabled,
+      obscureText: obscure,
+      style: style,
+      decoration: InputDecoration(hintText: hint),
+      onChanged: (v) {
+        onChanged(v);
+        widget.onFieldChanged(column, v);
+        if (column == 'mega_key') setState(() {}); // toggles obscuring
+      },
+    );
+  }
+
+  Widget _statusBadge(Account a) {
+    final badge = MegaBadge.status(a.status);
+    final checked = a.lastCheckedAt;
+    String? tip;
+    if (a.status == AccountStatus.failed) {
+      tip =
+          '${a.lastError ?? 'Login failed'}'
+          '${checked != null ? '\nChecked ${Fmt.dateTime(checked)}' : ''}';
+    } else if (a.status == AccountStatus.ok && checked != null) {
+      tip = 'Checked ${Fmt.dateTime(checked)}';
+    }
+    return tip == null ? badge : Tooltip(message: tip, child: badge);
+  }
+
+  Widget _loginCell(Account a) {
+    final last = a.lastLoginAt;
+    final storage = a.storage;
+    final loginText = Row(
+      children: [
+        Icon(
+          Icons.schedule_rounded,
+          size: 13,
+          color: last == null ? AppTheme.textMuted : AppTheme.textSecondary,
+        ),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text.rich(
+            last == null
+                ? const TextSpan(text: 'Never')
+                : TextSpan(
+                    text: Fmt.dateTime(last),
+                    children: [
+                      TextSpan(
+                        text: '  ·  ${Fmt.ago(last)}',
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: AppTheme.font,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: last == null ? AppTheme.textMuted : AppTheme.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    Widget storageLine;
+    if (storage == null) {
+      storageLine = const Text(
+        'Storage —',
+        style: TextStyle(
+          fontFamily: AppTheme.font,
+          fontSize: 11.5,
+          color: AppTheme.textMuted,
+        ),
+      );
+    } else {
+      final full = storage.fraction >= 0.9;
+      storageLine = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${Fmt.bytes(storage.usedBytes)} / ${Fmt.bytes(storage.totalBytes)}'
+            '  ·  ${(storage.fraction * 100).toStringAsFixed(storage.fraction < 0.1 ? 1 : 0)}%',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: AppTheme.font,
+              fontSize: 11.5,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: storage.fraction,
+              minHeight: 3,
+              color: full ? AppTheme.megaRed : AppTheme.megaBlue,
+              backgroundColor: AppTheme.stateHover,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Tooltip(
+      message: last == null
+          ? 'No successful login recorded yet'
+          : 'Last successful login: ${Fmt.dateTime(last)}'
+                '${storage == null ? '' : '\nStorage: ${Fmt.bytes(storage.usedBytes)} used of ${Fmt.bytes(storage.totalBytes)}'}',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [loginText, const SizedBox(height: 5), storageLine],
+      ),
+    );
+  }
+
+  Widget _iconAction({
+    required String tooltip,
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onPressed,
+    Color? tint,
+    Color? hoverColor,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 19),
+      style: ButtonStyle(
+        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+        fixedSize: const WidgetStatePropertyAll(Size.square(34)),
+        minimumSize: const WidgetStatePropertyAll(Size.square(34)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+        backgroundColor: WidgetStatePropertyAll(
+          tint?.withValues(alpha: 0.16) ?? Colors.transparent,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith((s) {
+          if (s.contains(WidgetState.disabled)) return AppTheme.stateHover;
+          if (hoverColor != null && s.contains(WidgetState.hovered)) {
+            return hoverColor;
+          }
+          return color;
+        }),
+        overlayColor: const WidgetStatePropertyAll(AppTheme.stateHover),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radius),
+          ),
+        ),
+      ),
+    );
+  }
+}

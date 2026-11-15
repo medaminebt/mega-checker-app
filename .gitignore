@@ -1,6 +1,11 @@
 # ===== Sensitive — never commit account data (contains passwords) =====
 *.csv
 
+# ===== Sensitive — Supabase credentials / database password =====
+.env
+.env.*
+*.env
+
 # Miscellaneous
 *.class
 *.log
