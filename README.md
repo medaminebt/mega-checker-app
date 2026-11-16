@@ -193,6 +193,11 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 | **Windows** 10 / 11 (64-bit) | `mega-checker-app-windows-x64.zip` | Unzip it somewhere permanent and run `mega-checker-app.exe`. Keep the whole folder together. |
 | **Web** | `mega-checker-app-web.zip` | Upload the files to Cloudflare Pages, Netlify or any static host, see [BUILD.md › Web](BUILD.md#web). |
 
+<p align="center">
+<img src="docs/screenshots/dmg-installer.png" alt="The macOS installer window: the app on the left, a red Drag to install arrow, and the Applications folder on the right" width="620"><br>
+<sub>Opening the macOS <code>.dmg</code>: drag the app onto <b>Applications</b>.</sub>
+</p>
+
 > **First launch:** the apps aren't signed with a paid developer
 > certificate, so the system asks once:
 > - **macOS:** *"Apple could not verify…"* → **System Settings → Privacy &
