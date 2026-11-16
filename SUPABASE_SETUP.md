@@ -67,12 +67,16 @@ the whole [`supabase/schema.sql`](supabase/schema.sql) again and click
 | App version | Database change |
 |---|---|
 | Upload folder URL | adds `upload_folder_url` (text, default empty) |
-| 2FA, master password, bin / versions, scheduled checks | adds `mega_vault`, the 2FA policies, `storage_rubbish_bytes` and `storage_versions_bytes` |
+| 2FA, master password, bin / versions, scheduled checks (v1.1) | adds `mega_vault`, the 2FA policies, `storage_rubbish_bytes` and `storage_versions_bytes` |
+| Pinned accounts (v1.2) | adds `pinned_at` (timestamp, empty = not pinned) |
 
-**This version needs the update:** after sign-in it opens your encryption
-settings, and stops with *Table "mega_vault" not found* until you've re-run
-the script. Your accounts are untouched; their passwords are encrypted the
-first time you unlock.
+**Coming from v1.0 you need the update:** after sign-in the app opens your
+encryption settings, and stops with *Table "mega_vault" not found* until
+you've re-run the script. Your accounts are untouched; their passwords are
+encrypted the first time you unlock.
+
+**Coming from v1.1:** everything works without the update except 📌 pins,
+which say *missing a column* until you re-run the script.
 
 > Once you turn on 2FA in the new app, **older copies of the app** (on
 > another computer, or an old web deployment) see an empty list, because

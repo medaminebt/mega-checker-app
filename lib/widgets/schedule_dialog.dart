@@ -212,7 +212,7 @@ class _ScheduleDialogState extends State<ScheduleDialog> {
           ),
           if (_runs.isNotEmpty) ...[
             const SizedBox(height: 10),
-            const Text('Recent scheduled checks', style: AppTheme.caption),
+            Text('Recent scheduled checks', style: AppTheme.caption),
             const SizedBox(height: 4),
             for (final r in _runs)
               Text(
@@ -427,10 +427,7 @@ class _ScheduleDialogState extends State<ScheduleDialog> {
       child: ExpansionTile(
         tilePadding: EdgeInsets.zero,
         childrenPadding: const EdgeInsets.only(bottom: 8),
-        title: const Text(
-          'How it works, and doing it by hand',
-          style: AppTheme.body,
-        ),
+        title: Text('How it works, and doing it by hand', style: AppTheme.body),
         expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
@@ -497,7 +494,7 @@ class _ScheduleDialogState extends State<ScheduleDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'Let the computer check all your MEGA accounts by itself, without '
             'opening the app.',
             style: AppTheme.bodySecondary,

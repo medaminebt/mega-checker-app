@@ -200,6 +200,8 @@ MEGAcmd for Windows must be installed on that PC too.
 | Add / Paste list / edit / delete accounts, MEGA key, notes | ✅ |
 | **Upload folder URL**: open the folder in a new tab and upload | ✅ |
 | Sort (status, email, last login, storage), search | ✅ |
+| 📌 Pin up to 10 accounts to the top (synced with the desktop apps) | ✅ |
+| 🌗 Light / dark / match the system | ✅ (follows the browser's setting in *Match system*) |
 | Import CSV (file picker) / Export CSV (downloads the file) | ✅ |
 | Two-step sign-in (2FA), master password, recovery key | ✅ (the master password is asked on every page load and never stored in the browser) |
 | **Sign me out when I close the browser** (sign-in screen, or 🛡 Security) | ✅ web only |

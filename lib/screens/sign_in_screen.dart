@@ -80,11 +80,7 @@ class _SignInScreenState extends State<SignInScreen> {
         crossAxisAlignment: WrapCrossAlignment.center,
         spacing: 6,
         children: [
-          const Icon(
-            Icons.storage_rounded,
-            size: 14,
-            color: AppTheme.textMuted,
-          ),
+          Icon(Icons.storage_rounded, size: 14, color: AppTheme.textMuted),
           Text(widget.projectHost ?? 'Supabase', style: AppTheme.caption),
           TextButton(
             onPressed: _busy ? null : widget.onChangeProject,
@@ -152,7 +148,7 @@ class _SignInScreenState extends State<SignInScreen> {
                           ? null
                           : (v) => setState(() => _signOutOnClose = v ?? false),
                     ),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         'Sign me out when I close the browser',
                         style: AppTheme.body,
@@ -170,7 +166,7 @@ class _SignInScreenState extends State<SignInScreen> {
             ElevatedButton.icon(
               onPressed: _busy ? null : _submit,
               icon: _busy
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(

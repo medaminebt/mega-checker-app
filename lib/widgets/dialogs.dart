@@ -315,7 +315,7 @@ class _PasteListDialogState extends State<PasteListDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'One account per line. Email first, then the password, separated by '
             'a colon, comma, semicolon, tab or space.',
             style: AppTheme.bodySecondary,
@@ -382,7 +382,7 @@ class _PasteListDialogState extends State<PasteListDialog> {
                     value: _overwrite,
                     onChanged: (v) => setState(() => _overwrite = v ?? false),
                   ),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Update the password of accounts already in the list',
                       style: AppTheme.body,
@@ -640,7 +640,7 @@ Future<bool> confirmFreeUp(
             style: AppTheme.body,
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'The app logs in with MEGAcmd to do it (this also counts as a '
             'check), then reads the new storage figures.',
             style: AppTheme.caption,

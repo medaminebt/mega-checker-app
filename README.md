@@ -97,16 +97,38 @@ to open it yourself.
 
 </td>
 </tr>
+<tr>
+<td valign="top">
+
+### 📌 Pin accounts
+Pin up to **10 accounts** to the top of the table. They stay there whatever
+you sort by, and the pins sync through Supabase to every device.
+
+</td>
+<td valign="top">
+
+### 🌗 Light & dark mode
+MEGA's dark look, a **light** mode, or **match the system** (it follows
+macOS / Windows / the browser as it changes). Remembered on each device.
+
+</td>
+</tr>
 </table>
 
 Also: inline editing with auto-save, a large **notes** editor, a **MEGA key**
-field per account, show/hide passwords, search, and a dark MEGA-style theme.
+field per account, show/hide passwords and search.
 
 ---
 
 ## Screenshots
 
 <table>
+<tr>
+<td colspan="2"><img src="docs/screenshots/home-light.png" alt="The dashboard in light mode, with two accounts pinned to the top"></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><b>Light mode</b> (🌗 in the header: Match system · Light · Dark), with two accounts <b>pinned</b> to the top</td>
+</tr>
 <tr>
 <td width="50%"><img src="docs/screenshots/checking.png" alt="Check all accounts running: progress bar and a row being checked"></td>
 <td width="50%"><img src="docs/screenshots/paste-list.png" alt="Paste a list of accounts: new, already known and skipped lines"></td>
@@ -124,11 +146,11 @@ field per account, show/hide passwords, search, and a dark MEGA-style theme.
 <td align="center"><b>Notes</b>: a roomy editor for each account</td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/two-factor.png" alt="Turn on two-step sign-in: scan the QR code with an authenticator app"></td>
+<td><img src="docs/screenshots/two-factor.png" alt="Turn on two-step sign-in (optional): scan the QR code with an authenticator app"></td>
 <td><img src="docs/screenshots/unlock.png" alt="Unlock your passwords with the master password"></td>
 </tr>
 <tr>
-<td align="center"><b>Two-step sign-in</b>: set up once, a code at each sign-in</td>
+<td align="center"><b>Two-step sign-in</b> (optional): turn it on in 🛡 Security</td>
 <td align="center"><b>Master password</b>: unlocks the encrypted passwords</td>
 </tr>
 <tr>
@@ -202,10 +224,11 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 
 > **Updating from an older version?** Re-run
 > [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor
-> first (it adds the encryption table, the 2FA rules and two columns), and
-> update the app on every computer you use: once you turn 2FA on, older copies
-> can't read the table any more. Your existing passwords are encrypted
-> automatically the first time you unlock.
+> first. From v1.0 it adds the encryption table, the 2FA rules and the
+> storage columns; from v1.1 it only adds `pinned_at` (for 📌 pins). Then
+> update the app on every computer you use: once you turn 2FA on, older
+> copies can't read the table any more. Your existing passwords are
+> encrypted automatically the first time you unlock.
 
 ---
 
@@ -216,6 +239,7 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 | **Check all accounts** | Logs in to every account one by one through MEGAcmd (random 10–25 s pause in between). **Stop** halts after the current one. |
 | **Recheck failed (N)** | The same, but only for the N accounts whose last check failed. |
 | ▶ on a row | Checks just that account. |
+| 📌 on a row | **Pins** the account to the top of the table (up to 10). Pinned rows have a red bar and stay on top whatever you sort by: in the order you pinned them, or sorted among themselves when a column is sorted. 📌 again unpins. Saved in Supabase (`pinned_at`), so every device sees the same pins. |
 | **Add account** | One account: email, password, optional MEGA key, upload folder URL and notes. |
 | **Paste list** | Many accounts, one per line: `email:password`, `email,password`, `email;password`, `email<tab>password` or `email password`. Shows how many are new, already known or skipped before saving, and can update the passwords of known emails. |
 | **Import CSV** | Header row with `email,password` (optional `notes`, `mega_key`, `upload_folder_url`). Only adds emails that aren't in your list yet. |
@@ -226,6 +250,7 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 | **Notes** | Click to edit in a large editor (Cmd/Ctrl+Enter saves); hover to read. |
 | Inline cells | Edit email, password, MEGA key or upload URL right in the table. Saves automatically; the footer shows *All changes saved* or *Not saved — Retry*. |
 | **Show passwords & keys** | Reveals passwords and MEGA keys (remembered between launches). |
+| 🌗 **Appearance** | **Match system**, **Light** or **Dark** (the default). Also on the sign-in screens. Remembered on each computer / browser. |
 | 📅 **Scheduled checks** (desktop) | Weekly (day + time), monthly (day 1–28 + time) or once on a date. Saving installs it in launchd (macOS) or Task Scheduler (Windows); **Test now** runs it immediately; *How it works, and doing it by hand* shows the exact commands to install, check and remove it yourself, and where the log is. |
 | 🛡 **Security** | **Turn on 2FA** / **Turn off 2FA** (optional; turning it off asks for a current code), **Change master password**, **New recovery key**, **Remember on this Mac / PC** (needed for scheduled checks), and on the web **Sign out when I close the browser**. |
 | ⟳ / sign-out icon | Reload from Supabase / sign out (asks first; also forgets a remembered master password). |
@@ -241,6 +266,7 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 | `storage_used_bytes` / `storage_total_bytes` | from `mega-df`, read right after logging in |
 | `storage_rubbish_bytes` / `storage_versions_bytes` | Rubbish Bin and old file versions, from the same `mega-df` |
 | `upload_folder_url` | the upload folder link you pasted (checks never touch it) |
+| `pinned_at` | when you pinned the account to the top (empty = not pinned) |
 
 `password` and `mega_key` hold `enc1:…` ciphertext: only the app, with your
 master password, can read them.

@@ -21,6 +21,8 @@ class MemoryAccountsRepository implements AccountsRepository {
           'storage_rubbish_bytes': a.storageRubbishBytes,
         if (a.storageVersionsBytes != null)
           'storage_versions_bytes': a.storageVersionsBytes,
+        if (a.pinnedAt != null)
+          'pinned_at': a.pinnedAt!.toUtc().toIso8601String(),
       };
     }
   }

@@ -29,28 +29,28 @@ class MegaBadge extends StatelessWidget {
   factory MegaBadge.status(AccountStatus status) {
     switch (status) {
       case AccountStatus.ok:
-        return const MegaBadge(
+        return MegaBadge(
           label: 'OK',
           text: AppTheme.successSoft,
           tint: AppTheme.success,
           icon: Icons.check_rounded,
         );
       case AccountStatus.failed:
-        return const MegaBadge(
+        return MegaBadge(
           label: 'Failed',
           text: AppTheme.dangerSoft,
           tint: AppTheme.megaRed,
           icon: Icons.close_rounded,
         );
       case AccountStatus.running:
-        return const MegaBadge(
+        return MegaBadge(
           label: 'Checking',
           text: AppTheme.megaBlueSoft,
           tint: AppTheme.megaBlue,
           spinner: true,
         );
       case AccountStatus.untested:
-        return const MegaBadge(
+        return MegaBadge(
           label: 'Untested',
           text: AppTheme.textSecondary,
           tint: AppTheme.textMuted,

@@ -4,8 +4,8 @@
 -- Run ONCE: Supabase dashboard → your project → SQL Editor → "New query" →
 -- paste this whole file → "Run". It is safe to run again (idempotent), and
 -- running it again is also how an existing project gets new columns and
--- tables (this version adds: storage_rubbish_bytes, storage_versions_bytes,
--- the mega_vault table and the 2FA policies).
+-- tables (v1.2 adds pinned_at; v1.1 added storage_rubbish_bytes,
+-- storage_versions_bytes, the mega_vault table and the 2FA policies).
 -- =============================================================================
 
 -- One row per MEGA account, owned by the Supabase user who created it.
@@ -26,6 +26,7 @@ create table if not exists public.mega_accounts (
   storage_total_bytes bigint,
   storage_rubbish_bytes  bigint,                         -- Rubbish Bin size (mega-df)
   storage_versions_bytes bigint,                         -- old file versions size (mega-df)
+  pinned_at           timestamptz,                       -- pinned to the top of the table (null = not)
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   constraint mega_accounts_user_email_key unique (user_id, email)
@@ -35,7 +36,8 @@ create table if not exists public.mega_accounts (
 alter table public.mega_accounts
   add column if not exists upload_folder_url      text not null default '',
   add column if not exists storage_rubbish_bytes  bigint,
-  add column if not exists storage_versions_bytes bigint;
+  add column if not exists storage_versions_bytes bigint,
+  add column if not exists pinned_at              timestamptz;
 
 -- password and mega_key hold "enc1:…" ciphertext once you set a master
 -- password in the app (see public.mega_vault below). Supabase never sees

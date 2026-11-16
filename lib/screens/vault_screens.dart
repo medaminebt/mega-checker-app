@@ -113,7 +113,7 @@ class RecoveryKeyPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        const Text(
+        Text(
           'Store it in your password manager or write it down and keep it '
           'somewhere safe. It opens your passwords if you forget the master '
           'password. It is shown only now; you can make a new one later in '
@@ -147,7 +147,7 @@ Widget _rememberBox({
             TextSpan(
               text: 'Remember on $deviceName',
               style: AppTheme.body,
-              children: const [
+              children: [
                 TextSpan(
                   text:
                       '\nOpens without the master password next time. Needed '
@@ -164,7 +164,7 @@ Widget _rememberBox({
 );
 
 Widget _busyIcon(bool busy, IconData icon) => busy
-    ? const SizedBox(
+    ? SizedBox(
         width: 16,
         height: 16,
         child: CircularProgressIndicator(
@@ -179,7 +179,7 @@ Widget _footer(String? email, VoidCallback? onSignOut) => Wrap(
   crossAxisAlignment: WrapCrossAlignment.center,
   spacing: 6,
   children: [
-    const Icon(Icons.person_rounded, size: 14, color: AppTheme.textMuted),
+    Icon(Icons.person_rounded, size: 14, color: AppTheme.textMuted),
     Text(email ?? 'Signed in', style: AppTheme.caption),
     TextButton(onPressed: onSignOut, child: const Text('Sign out')),
   ],
@@ -281,7 +281,7 @@ class _VaultSetupScreenState extends State<VaultSetupScreen> {
                     value: _saved,
                     onChanged: (v) => setState(() => _saved = v ?? false),
                   ),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       "I've saved my recovery key",
                       style: AppTheme.body,
@@ -329,7 +329,7 @@ class _VaultSetupScreenState extends State<VaultSetupScreen> {
             onSubmitted: _create,
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             "Pick one you don't use anywhere else, and not your Supabase "
             'password. You type it each time the app opens (unless you tick '
             'Remember).',
@@ -357,7 +357,7 @@ class _VaultSetupScreenState extends State<VaultSetupScreen> {
                       ? null
                       : (v) => setState(() => _understood = v ?? false),
                 ),
-                const Expanded(
+                Expanded(
                   child: Padding(
                     padding: EdgeInsets.only(top: 12),
                     child: Text(
@@ -675,7 +675,7 @@ class _ResetDialogState extends State<_ResetDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'Without the master password or the recovery key, nobody can '
             'decrypt your stored MEGA passwords and keys. This erases them '
             'from Supabase and lets you choose a new master password.\n\n'

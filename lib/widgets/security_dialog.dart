@@ -125,7 +125,7 @@ class _SecurityDialogState extends State<SecurityDialog> {
             child: const Text('Make a new key'),
           ),
         ],
-        child: const Text(
+        child: Text(
           'Your current recovery key stops working. Do this if you lost it '
           'or think someone else has seen it.',
           style: AppTheme.bodySecondary,
@@ -240,7 +240,7 @@ class _SecurityDialogState extends State<SecurityDialog> {
             ),
           ]),
           _section('Master password', Icons.lock_rounded, [
-            const Text(
+            Text(
               'Encrypts your MEGA passwords and keys before they reach '
               'Supabase (AES-256-GCM; key from PBKDF2-SHA256).',
               style: AppTheme.caption,
@@ -289,11 +289,11 @@ class _SecurityDialogState extends State<SecurityDialog> {
                 contentPadding: EdgeInsets.zero,
                 value: _sessionOnly,
                 onChanged: _toggleSessionOnly,
-                title: const Text(
+                title: Text(
                   'Sign out when I close the browser',
                   style: AppTheme.body,
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Keeps the sign-in only for this tab (sessionStorage). '
                   'Use it on computers that aren\'t yours. The master '
                   'password is never stored in the browser either way.',
@@ -407,7 +407,7 @@ class _ChangeMasterPasswordDialogState
             onSubmitted: _save,
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Your recovery key keeps working, and so do computers where the '
             'key is remembered. Everywhere else, use the new password next '
             'time.',

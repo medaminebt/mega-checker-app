@@ -11,6 +11,8 @@ the browser closes, **B2** Rubbish Bin / versions sizes (with the **C1**
 clean-up actions behind an *Are you sure?*), and **B7** scheduled checks.
 They're marked ✅ below. In v1.1.0, 2FA became **optional**: you sign in
 with just the password until you turn it on in 🛡 Security.
+v1.2.0 adds a **light / dark / match-system** appearance switch and
+**pinned accounts** (up to 10, kept at the top of the table).
 
 - [1. Do upload folder URLs work in the web version?](#1-do-upload-folder-urls-work-in-the-web-version)
   - [Can I make the file requests from the MEGA desktop app, and will the column fill itself?](#can-i-make-the-file-requests-from-the-mega-desktop-app-and-will-the-column-fill-itself)

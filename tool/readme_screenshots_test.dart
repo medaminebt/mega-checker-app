@@ -14,6 +14,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mega_keepalive/app_theme.dart';
+import 'package:mega_keepalive/appearance.dart';
 import 'package:mega_keepalive/mega_service.dart';
 import 'package:mega_keepalive/models.dart';
 import 'package:mega_keepalive/prefs.dart';
@@ -92,6 +93,7 @@ List<Account> _sampleAccounts() {
       storageVersionsBytes: 340 * _mib,
       uploadFolderUrl: 'https://mega.nz/filerequest/Xq7Lp2Ab',
       notes: 'Family photos 2019–2024\nRenew Pro in March',
+      pinnedAt: ago(days: 30),
     ),
     Account(
       email: 'work.backup@example.com',
@@ -105,6 +107,7 @@ List<Account> _sampleAccounts() {
       storageVersionsBytes: 96 * _mib,
       uploadFolderUrl: 'https://mega.nz/filerequest/Rk3Tz9Qw',
       notes: 'Client projects',
+      pinnedAt: ago(days: 20),
     ),
     Account(
       email: 'music.library@example.org',
@@ -216,7 +219,11 @@ class _MacWindow extends StatelessWidget {
           child: Container(
             foregroundDecoration: BoxDecoration(
               borderRadius: radius,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+              border: Border.all(
+                color: AppTheme.isDark
+                    ? Colors.white.withValues(alpha: 0.14)
+                    : Colors.black.withValues(alpha: 0.12),
+              ),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -224,7 +231,9 @@ class _MacWindow extends StatelessWidget {
                 Container(
                   width: size.width,
                   height: _titleBarHeight,
-                  color: const Color(0xFF1C1C1E),
+                  color: AppTheme.isDark
+                      ? const Color(0xFF1C1C1E)
+                      : const Color(0xFFE7E7EA),
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -240,13 +249,15 @@ class _MacWindow extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const Text(
+                      Text(
                         'mega-checker-app',
                         style: TextStyle(
                           fontFamily: 'Lexend',
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF9A9AA0),
+                          color: AppTheme.isDark
+                              ? const Color(0xFF9A9AA0)
+                              : const Color(0xFF6E6E73),
                         ),
                       ),
                     ],
@@ -513,6 +524,25 @@ void main() {
     );
     await tester.pumpAndSettle();
     await _save(tester, 'home');
+  });
+
+  _shot('home-light', (tester) async {
+    await _prefs({'sort_column': 'storage', 'sort_asc': false});
+    AppTheme.use(Brightness.light);
+    Appearance.mode.value = ThemeMode.light;
+    try {
+      final repo = MemoryAccountsRepository(_sampleAccounts());
+      await _show(
+        tester,
+        _MacWindow.outer(desktop),
+        _MacWindow(size: desktop, child: _materialApp(_home(repo), desktop)),
+      );
+      await tester.pumpAndSettle();
+      await _save(tester, 'home-light');
+    } finally {
+      AppTheme.use(Brightness.dark);
+      Appearance.mode.value = ThemeMode.dark;
+    }
   });
 
   _shot('checking', (tester) async {

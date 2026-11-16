@@ -20,6 +20,7 @@ import '../scheduled_runs.dart';
 import '../security/encrypted_repository.dart';
 import '../security/security_controller.dart';
 import '../widgets/account_row.dart';
+import '../widgets/appearance_button.dart';
 import '../widgets/dialogs.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/mega_logo.dart';
@@ -768,6 +769,40 @@ class _HomePageState extends State<HomePage> {
     Prefs.sortAsc = _sortAsc;
   }
 
+  /// Most accounts that can be pinned to the top of the table.
+  static const maxPinned = 10;
+
+  int get _pinnedCount => _accounts.where((a) => a.pinned).length;
+
+  /// Pin [a] to the top of the table, or unpin it. Saved straight away (not
+  /// through the edit queue), so a database without the `pinned_at` column
+  /// only fails this one action.
+  Future<void> _togglePin(Account a) async {
+    final id = a.id;
+    if (id == null) return;
+    final pin = !a.pinned;
+    if (pin && _pinnedCount >= maxPinned) {
+      _snack(
+        'You can pin up to $maxPinned accounts. Unpin one first.',
+        error: true,
+      );
+      return;
+    }
+    final before = a.pinnedAt;
+    setState(() => a.pinnedAt = pin ? DateTime.now() : null);
+    try {
+      await _repo.update(id, {
+        'pinned_at': a.pinnedAt?.toUtc().toIso8601String(),
+      });
+    } catch (e) {
+      _safeSetState(() => a.pinnedAt = before);
+      _snack(
+        "Couldn't ${pin ? 'pin' : 'unpin'} ${a.email}: ${describeError(e)}",
+        error: true,
+      );
+    }
+  }
+
   List<Account> _visible() {
     final q = _filter.trim().toLowerCase();
     final list = q.isEmpty
@@ -802,7 +837,13 @@ class _HomePageState extends State<HomePage> {
         return _sortAsc ? c : -c;
       });
     }
-    return list;
+    // Pinned accounts first: in the order they were pinned, or by the
+    // chosen column when one is sorted. Then everything else.
+    final pinned = list.where((a) => a.pinned).toList();
+    if (col == null) {
+      pinned.sort((a, b) => a.pinnedAt!.compareTo(b.pinnedAt!));
+    }
+    return [...pinned, ...list.where((a) => !a.pinned)];
   }
 
   // ---- build ---------------------------------------------------------------
@@ -843,7 +884,7 @@ class _HomePageState extends State<HomePage> {
 
     return Container(
       padding: EdgeInsets.fromLTRB(compact ? 16 : 24, 14, compact ? 8 : 20, 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.bgBase,
         border: Border(bottom: BorderSide(color: AppTheme.megaRed, width: 3)),
       ),
@@ -906,6 +947,7 @@ class _HomePageState extends State<HomePage> {
               onPressed: () => showSecurityDialog(context, widget.security!),
               icon: const Icon(Icons.shield_rounded, size: 20),
             ),
+          const AppearanceButton(),
           if (widget.onChangeProject != null)
             IconButton(
               tooltip: 'Supabase project settings',
@@ -1012,7 +1054,7 @@ class _HomePageState extends State<HomePage> {
                   color: AppTheme.megaRed,
                 ),
                 const SizedBox(height: 14),
-                const Text(
+                Text(
                   'Couldn\'t load your accounts',
                   style: AppTheme.h2,
                   textAlign: TextAlign.center,
@@ -1276,7 +1318,15 @@ class _HomePageState extends State<HomePage> {
                 ? _emptyTable()
                 : ListView.separated(
                     itemCount: visible.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    // A stronger line under the last pinned row.
+                    separatorBuilder: (_, i) =>
+                        visible[i].pinned && !visible[i + 1].pinned
+                        ? Divider(
+                            height: 2,
+                            thickness: 2,
+                            color: AppTheme.borderSubtle,
+                          )
+                        : const Divider(height: 1),
                     itemBuilder: (context, i) {
                       final a = visible[i];
                       return AccountRow(
@@ -1299,6 +1349,7 @@ class _HomePageState extends State<HomePage> {
                             ? 'Free up space'
                             : 'Freeing space needs the desktop app '
                                   '(MEGAcmd)',
+                        onTogglePin: () => _togglePin(a),
                       );
                     },
                   ),
@@ -1322,7 +1373,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  static const TextStyle _headerStyle = TextStyle(
+  static TextStyle get _headerStyle => TextStyle(
     fontFamily: AppTheme.font,
     fontSize: 10.5,
     fontWeight: FontWeight.w700,
@@ -1373,7 +1424,7 @@ class _HomePageState extends State<HomePage> {
     );
     Widget left(Widget w) => Align(alignment: Alignment.centerLeft, child: w);
     return Container(
-      color: const Color(0xFF141414),
+      color: AppTheme.tableHeader,
       padding: AccountCols.padding.copyWith(top: 9, bottom: 9),
       child: Row(
         children: [
@@ -1395,7 +1446,7 @@ class _HomePageState extends State<HomePage> {
             child: Row(
               children: [
                 Flexible(child: _sortHeader('LAST LOGIN', 'login')),
-                const Text('·', style: _headerStyle),
+                Text('·', style: _headerStyle),
                 Flexible(
                   child: _sortHeader(
                     'STORAGE',
@@ -1451,9 +1502,9 @@ class _HomePageState extends State<HomePage> {
               mark: AppTheme.megaRed,
             ),
             const SizedBox(height: 18),
-            const Text('No MEGA accounts yet', style: AppTheme.h2),
+            Text('No MEGA accounts yet', style: AppTheme.h2),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Paste your list of emails & passwords, import a CSV, '
               'or add an account by hand.',
               style: AppTheme.bodySecondary,
@@ -1485,7 +1536,7 @@ class _HomePageState extends State<HomePage> {
   Widget _footer(int shown) {
     final Widget sync;
     if (_flushing) {
-      sync = const Row(
+      sync = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
@@ -1527,7 +1578,7 @@ class _HomePageState extends State<HomePage> {
         ],
       );
     } else {
-      sync = const Row(
+      sync = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           _Dot(AppTheme.success),
@@ -1550,7 +1601,13 @@ class _HomePageState extends State<HomePage> {
             child: Align(alignment: Alignment.centerLeft, child: sync),
           ),
           const SizedBox(width: 16),
-          Text('$shown / ${_accounts.length} shown', style: AppTheme.caption),
+          Text(
+            [
+              '$shown / ${_accounts.length} shown',
+              if (_pinnedCount > 0) '$_pinnedCount / $maxPinned pinned',
+            ].join('  ·  '),
+            style: AppTheme.caption,
+          ),
         ],
       ),
     );

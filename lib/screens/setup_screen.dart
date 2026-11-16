@@ -108,7 +108,7 @@ class _SetupScreenState extends State<SetupScreen> {
           'Your MEGA accounts are stored in your own Supabase database. '
           'Paste your project\'s details once — they\'re saved '
           '${kIsWeb ? 'in this browser' : 'on this computer'}.',
-      footer: const Text(
+      footer: Text(
         'Where to find these: Supabase dashboard › your project › '
         'Project Settings › Data API (URL) and API Keys (publishable key).\n'
         'Step-by-step guide: SUPABASE_SETUP.md in the project folder.',
@@ -142,7 +142,7 @@ class _SetupScreenState extends State<SetupScreen> {
             onSubmitted: (_) => _submit(),
           ),
           const SizedBox(height: 10),
-          const Text(
+          Text(
             'Never paste the database password or a secret / service_role key '
             'here — the app only needs the publishable key.',
             style: TextStyle(
@@ -159,7 +159,7 @@ class _SetupScreenState extends State<SetupScreen> {
           ElevatedButton.icon(
             onPressed: _busy ? null : _submit,
             icon: _busy
-                ? const SizedBox(
+                ? SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(

@@ -49,7 +49,7 @@ class _CodeField extends StatelessWidget {
 }
 
 Widget _busyIcon(bool busy, IconData icon) => busy
-    ? const SizedBox(
+    ? SizedBox(
         width: 16,
         height: 16,
         child: CircularProgressIndicator(
@@ -64,7 +64,7 @@ Widget _signOutFooter(String? email, VoidCallback? onSignOut) => Wrap(
   crossAxisAlignment: WrapCrossAlignment.center,
   spacing: 6,
   children: [
-    const Icon(Icons.person_rounded, size: 14, color: AppTheme.textMuted),
+    Icon(Icons.person_rounded, size: 14, color: AppTheme.textMuted),
     Text(email ?? 'Signed in', style: AppTheme.caption),
     TextButton(onPressed: onSignOut, child: const Text('Sign out')),
   ],
@@ -74,7 +74,7 @@ const _lostPhoneHelp =
     'Lost your phone? In Supabase open Authentication › Users › your user, '
     'delete the MFA factor, then sign in with just your password.';
 
-const _smallMuted = TextStyle(
+TextStyle get _smallMuted => TextStyle(
   fontFamily: AppTheme.font,
   fontSize: 11.5,
   color: AppTheme.textMuted,
@@ -176,7 +176,7 @@ class _MfaEnrolDialogState extends State<MfaEnrolDialog> {
   Widget _steps(TotpSetup setup) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      const Text(
+      Text(
         '1. In your authenticator app, add an account and scan this code:',
         style: AppTheme.body,
       ),
@@ -193,7 +193,7 @@ class _MfaEnrolDialogState extends State<MfaEnrolDialog> {
         ),
       ),
       const SizedBox(height: 12),
-      const Text(
+      Text(
         "Can't scan? Choose \"enter a setup key\" and type:",
         style: AppTheme.caption,
         textAlign: TextAlign.center,
@@ -218,7 +218,7 @@ class _MfaEnrolDialogState extends State<MfaEnrolDialog> {
         ],
       ),
       const SizedBox(height: 18),
-      const Text('2. Type the 6-digit code it shows:', style: AppTheme.body),
+      Text('2. Type the 6-digit code it shows:', style: AppTheme.body),
       const SizedBox(height: 10),
       _CodeField(controller: _code, enabled: !_busy, onComplete: _verify),
       if (_error != null) ...[
@@ -226,7 +226,7 @@ class _MfaEnrolDialogState extends State<MfaEnrolDialog> {
         InlineMessage(_error!),
       ],
       const SizedBox(height: 12),
-      const Text(
+      Text(
         'Other computers and browsers ask for the code the next time they '
         'open. $_lostPhoneHelp',
         style: _smallMuted,
@@ -264,7 +264,7 @@ class _MfaEnrolDialogState extends State<MfaEnrolDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'Optional. With it on, signing in needs your password and then a '
             '6-digit code from an authenticator app on your phone (Google '
             'Authenticator, Microsoft Authenticator, 1Password, Bitwarden, '
@@ -358,13 +358,13 @@ class _MfaTurnOffDialogState extends State<MfaTurnOffDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'Signing in then needs only your Supabase password. Your MEGA '
             'passwords stay encrypted with your master password either way.',
             style: AppTheme.bodySecondary,
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'To confirm, type the 6-digit code from your authenticator app:',
             style: AppTheme.body,
           ),
@@ -380,7 +380,7 @@ class _MfaTurnOffDialogState extends State<MfaTurnOffDialog> {
             InlineMessage(_error!),
           ],
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'You can delete the authenticator-app entry afterwards. Turning '
             '2FA on again makes a new one.',
             style: _smallMuted,
@@ -472,7 +472,7 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
             label: Text(_busy ? 'Checking…' : 'Verify'),
           ),
           const SizedBox(height: 12),
-          const Text(_lostPhoneHelp, style: _smallMuted),
+          Text(_lostPhoneHelp, style: _smallMuted),
         ],
       ),
     );

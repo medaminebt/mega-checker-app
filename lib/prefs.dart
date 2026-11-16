@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Small local settings stored with `shared_preferences`: the app's
@@ -24,6 +25,7 @@ class Prefs {
   static const _kSortAsc = 'sort_asc';
   static const _kSignOutOnClose = 'sign_out_on_browser_close';
   static const _kSchedule = 'check_schedule';
+  static const _kThemeMode = 'theme_mode';
 
   // ---- Supabase connection -----------------------------------------------
 
@@ -60,6 +62,16 @@ class Prefs {
 
   static bool get sortAsc => _p?.getBool(_kSortAsc) ?? true;
   static set sortAsc(bool v) => _p?.setBool(_kSortAsc, v);
+
+  /// Appearance: dark (the default, MEGA's look), light, or follow the
+  /// system setting.
+  static ThemeMode get themeMode => switch (_p?.getString(_kThemeMode)) {
+    'light' => ThemeMode.light,
+    'system' => ThemeMode.system,
+    _ => ThemeMode.dark,
+  };
+  static Future<void> setThemeMode(ThemeMode m) async =>
+      _p?.setString(_kThemeMode, m.name);
 
   // ---- security & scheduling ---------------------------------------------
 

@@ -40,6 +40,10 @@ class Account {
   int? storageRubbishBytes;
   int? storageVersionsBytes;
 
+  /// When the account was pinned to the top of the table (null = not
+  /// pinned). Pinned rows are shown first, oldest pin on top.
+  DateTime? pinnedAt;
+
   /// Transient UI state: a check is in progress for this account.
   bool running = false;
 
@@ -58,7 +62,10 @@ class Account {
     this.storageTotalBytes,
     this.storageRubbishBytes,
     this.storageVersionsBytes,
+    this.pinnedAt,
   });
+
+  bool get pinned => pinnedAt != null;
 
   AccountStatus get status {
     if (running) return AccountStatus.running;
@@ -111,6 +118,7 @@ class Account {
       storageTotalBytes: big('storage_total_bytes'),
       storageRubbishBytes: big('storage_rubbish_bytes'),
       storageVersionsBytes: big('storage_versions_bytes'),
+      pinnedAt: ts('pinned_at'),
     );
   }
 

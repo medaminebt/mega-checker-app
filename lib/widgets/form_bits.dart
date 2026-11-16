@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_theme.dart';
+import 'appearance_button.dart';
 import 'mega_logo.dart';
 
 /// `.field label` — small uppercase label above an input.
@@ -94,45 +95,58 @@ class AuthShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.bgBase,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: width),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const MegaLogo(size: 64, glow: true),
-                const SizedBox(height: 22),
-                Text(title, style: AppTheme.h1, textAlign: TextAlign.center),
-                const SizedBox(height: 8),
-                Text(
-                  subtitle,
-                  style: AppTheme.bodySecondary.copyWith(fontSize: 13.5),
-                  textAlign: TextAlign.center,
+      body: Stack(
+        children: [
+          Positioned.fill(child: _content()),
+          const Positioned(
+            top: 10,
+            right: 10,
+            child: SafeArea(child: AppearanceButton()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _content() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: width),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const MegaLogo(size: 64, glow: true),
+              const SizedBox(height: 22),
+              Text(title, style: AppTheme.h1, textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                style: AppTheme.bodySecondary.copyWith(fontSize: 13.5),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 28),
+              // Panel with a red accent strip on top (a rounded border
+              // must be uniform, so the strip is drawn separately).
+              Container(
+                width: double.infinity,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: AppTheme.bgSurface,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                  border: Border.all(color: AppTheme.borderSubtle),
                 ),
-                const SizedBox(height: 28),
-                // Panel with a red accent strip on top (a rounded border
-                // must be uniform, so the strip is drawn separately).
-                Container(
-                  width: double.infinity,
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: AppTheme.bgSurface,
-                    borderRadius: BorderRadius.circular(AppTheme.radiusLg),
-                    border: Border.all(color: AppTheme.borderSubtle),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(height: 3, color: AppTheme.megaRed),
-                      Padding(padding: const EdgeInsets.all(26), child: child),
-                    ],
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(height: 3, color: AppTheme.megaRed),
+                    Padding(padding: const EdgeInsets.all(26), child: child),
+                  ],
                 ),
-                if (footer != null) ...[const SizedBox(height: 18), footer!],
-              ],
-            ),
+              ),
+              if (footer != null) ...[const SizedBox(height: 18), footer!],
+            ],
           ),
         ),
       ),

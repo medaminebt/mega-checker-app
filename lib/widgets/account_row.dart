@@ -17,12 +17,12 @@ class AccountCols {
   static const double bin = 122;
   static const int uploadFlex = 2;
   static const int notesFlex = 2;
-  static const double actions = 84;
+  static const double actions = 124;
   static const double gap = 12;
   static const EdgeInsets padding = EdgeInsets.symmetric(horizontal: 18);
 
   /// Below this width the table scrolls sideways instead of squeezing.
-  static const double minTableWidth = 1230;
+  static const double minTableWidth = 1270;
 }
 
 /// One editable account row. Email / password / MEGA key / upload folder URL
@@ -43,6 +43,7 @@ class AccountRow extends StatefulWidget {
     this.checkTooltip = 'Check this account now',
     this.onFreeUp,
     this.freeUpTooltip = 'Free up space',
+    this.onTogglePin,
   });
 
   final Account account;
@@ -64,6 +65,9 @@ class AccountRow extends StatefulWidget {
   /// run MEGAcmd (web).
   final void Function(FreeUpAction action)? onFreeUp;
   final String freeUpTooltip;
+
+  /// Pin to / unpin from the top of the table.
+  final VoidCallback? onTogglePin;
 
   @override
   State<AccountRow> createState() => _AccountRowState();
@@ -115,9 +119,9 @@ class _AccountRowState extends State<AccountRow> {
     if (a.running) {
       bg = AppTheme.megaBlue.withValues(alpha: 0.10);
     } else if (_hover) {
-      bg = const Color(0xFF222222);
+      bg = AppTheme.rowHover;
     } else {
-      bg = widget.index.isOdd ? const Color(0xFF1F1F1F) : AppTheme.bgSurface;
+      bg = widget.index.isOdd ? AppTheme.rowAlt : AppTheme.bgSurface;
     }
 
     return MouseRegion(
@@ -125,8 +129,21 @@ class _AccountRowState extends State<AccountRow> {
       onExit: (_) => setState(() => _hover = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        color: bg,
-        padding: AccountCols.padding.copyWith(top: 9, bottom: 9),
+        // Pinned rows get a red bar on the left; the padding gives its
+        // width back so the columns stay lined up with the header.
+        decoration: BoxDecoration(
+          color: bg,
+          border: a.pinned
+              ? const Border(
+                  left: BorderSide(color: AppTheme.megaRed, width: 3),
+                )
+              : null,
+        ),
+        padding: AccountCols.padding.copyWith(
+          top: 9,
+          bottom: 9,
+          left: AccountCols.padding.left - (a.pinned ? 3 : 0),
+        ),
         child: Row(
           children: [
             SizedBox(
@@ -187,6 +204,17 @@ class _AccountRowState extends State<AccountRow> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  _iconAction(
+                    tooltip: a.pinned ? 'Unpin' : 'Pin to top',
+                    icon: a.pinned
+                        ? Icons.push_pin_rounded
+                        : Icons.push_pin_outlined,
+                    size: 17,
+                    color: a.pinned ? AppTheme.megaRed : AppTheme.textMuted,
+                    hoverColor: AppTheme.megaRed,
+                    onPressed: widget.onTogglePin,
+                  ),
+                  const SizedBox(width: 6),
                   _iconAction(
                     tooltip: widget.checkTooltip,
                     icon: Icons.play_arrow_rounded,
@@ -282,7 +310,7 @@ class _AccountRowState extends State<AccountRow> {
       color: AppTheme.bgBase,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        side: const BorderSide(color: AppTheme.hairline),
+        side: BorderSide(color: AppTheme.hairline),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -297,7 +325,7 @@ class _AccountRowState extends State<AccountRow> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: text.isEmpty
-                      ? const TextStyle(
+                      ? TextStyle(
                           fontFamily: AppTheme.font,
                           color: AppTheme.textMuted,
                           fontSize: 13,
@@ -373,7 +401,7 @@ class _AccountRowState extends State<AccountRow> {
                     children: [
                       TextSpan(
                         text: '  ·  ${Fmt.ago(last)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.textSecondary,
                           fontWeight: FontWeight.w400,
                         ),
@@ -394,7 +422,7 @@ class _AccountRowState extends State<AccountRow> {
 
     Widget storageLine;
     if (storage == null) {
-      storageLine = const Text(
+      storageLine = Text(
         'Storage —',
         style: TextStyle(
           fontFamily: AppTheme.font,
@@ -412,7 +440,7 @@ class _AccountRowState extends State<AccountRow> {
             '${Fmt.bytes(storage.usedBytes)} / ${Fmt.bytes(storage.totalBytes)}'
             '  ·  ${(storage.fraction * 100).toStringAsFixed(storage.fraction < 0.1 ? 1 : 0)}%',
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: AppTheme.font,
               fontSize: 11.5,
               color: AppTheme.textSecondary,
@@ -491,7 +519,7 @@ class _AccountRowState extends State<AccountRow> {
       constraints: const BoxConstraints(minWidth: 240, maxWidth: 380),
       icon: Icon(
         Icons.cleaning_services_rounded,
-        color: canFree ? AppTheme.megaBlueSoft : AppTheme.stateHover,
+        color: canFree ? AppTheme.megaBlueSoft : AppTheme.disabledIcon,
       ),
       onSelected: (action) => onFreeUp?.call(action),
       itemBuilder: (_) => [
@@ -578,13 +606,13 @@ class _AccountRowState extends State<AccountRow> {
           tint?.withValues(alpha: 0.16) ?? Colors.transparent,
         ),
         foregroundColor: WidgetStateProperty.resolveWith((s) {
-          if (s.contains(WidgetState.disabled)) return AppTheme.stateHover;
+          if (s.contains(WidgetState.disabled)) return AppTheme.disabledIcon;
           if (hoverColor != null && s.contains(WidgetState.hovered)) {
             return hoverColor;
           }
           return color;
         }),
-        overlayColor: const WidgetStatePropertyAll(AppTheme.stateHover),
+        overlayColor: WidgetStatePropertyAll(AppTheme.stateHover),
         shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppTheme.radius),

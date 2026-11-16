@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'accounts_repository.dart';
 import 'app_theme.dart';
+import 'appearance.dart';
 import 'format.dart';
 import 'platform/auth_storage.dart';
 import 'platform/desktop.dart';
@@ -27,6 +28,7 @@ import 'widgets/mega_logo.dart';
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await Prefs.init();
+  Appearance.load();
 
   // Started by the OS schedule (launchd / Task Scheduler)?
   final scheduled =
@@ -51,11 +53,56 @@ Future<void> main(List<String> args) async {
   runApp(MegaKeepAliveApp(scheduledRun: scheduled));
 }
 
-class MegaKeepAliveApp extends StatelessWidget {
+class MegaKeepAliveApp extends StatefulWidget {
   const MegaKeepAliveApp({super.key, this.scheduledRun = false});
 
   /// Started with `--scheduled-check`: check everything, then quit.
   final bool scheduledRun;
+
+  @override
+  State<MegaKeepAliveApp> createState() => _MegaKeepAliveAppState();
+}
+
+class _MegaKeepAliveAppState extends State<MegaKeepAliveApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    Appearance.mode.addListener(_apply);
+    AppTheme.use(
+      Appearance.resolve(Appearance.mode.value, Appearance.platformBrightness),
+    );
+  }
+
+  @override
+  void dispose() {
+    Appearance.mode.removeListener(_apply);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// "Match system" follows the OS / browser while the app is open.
+  @override
+  void didChangePlatformBrightness() => _apply();
+
+  /// Switch palettes, then rebuild every widget (state is kept: the
+  /// vault stays unlocked, edits and dialogs stay where they are).
+  void _apply() {
+    final b = Appearance.resolve(
+      Appearance.mode.value,
+      Appearance.platformBrightness,
+    );
+    if (b == AppTheme.brightness || !mounted) return;
+    AppTheme.use(b);
+    void rebuild(Element e) {
+      e.markNeedsBuild();
+      e.visitChildren(rebuild);
+    }
+
+    (context as Element).visitChildren(rebuild);
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,8 +110,9 @@ class MegaKeepAliveApp extends StatelessWidget {
       title: 'MEGA Keep-Alive',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme(),
-      themeMode: ThemeMode.dark,
-      home: AppGate(scheduledRun: scheduledRun),
+      // The palette switches at once; an animated ThemeData would lag it.
+      themeAnimationDuration: Duration.zero,
+      home: AppGate(scheduledRun: widget.scheduledRun),
     );
   }
 }
