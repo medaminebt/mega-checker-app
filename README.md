@@ -189,7 +189,7 @@ Ready-made builds are on the **[Releases page](https://github.com/medaminebt/meg
 
 | Platform | File | Install |
 |---|---|---|
-| **macOS** (Apple Silicon, M1–M4) | `mega-checker-app-macos.dmg` (or `.zip`) | Open the `.dmg` and drag the app to **Applications**. |
+| **macOS** (Apple Silicon, M1–M4) | `mega-checker-app-macos.dmg` | Open it: a window shows the app, a **Drag to install** arrow and your **Applications** folder. Drag the app onto the folder. |
 | **Windows** 10 / 11 (64-bit) | `mega-checker-app-windows-x64.zip` | Unzip it somewhere permanent and run `mega-checker-app.exe`. Keep the whole folder together. |
 | **Web** | `mega-checker-app-web.zip` | Upload the files to Cloudflare Pages, Netlify or any static host, see [BUILD.md › Web](BUILD.md#web). |
 

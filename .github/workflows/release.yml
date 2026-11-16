@@ -1,12 +1,15 @@
 # Builds the downloads for a GitHub release and attaches them to it:
 #
-#   mega-checker-app-macos.dmg / -macos.zip   macOS app (Apple Silicon)
-#   mega-checker-app-windows-x64.zip          Windows app folder
-#   mega-checker-app-web.zip                  web build (upload to a static host)
-#   SHA256SUMS.txt                            checksums of the files above
+#   mega-checker-app-macos.dmg         macOS installer (Apple Silicon): a window
+#                                      with the app, a "Drag to install" arrow
+#                                      and the Applications folder
+#   mega-checker-app-windows-x64.zip   Windows app folder
+#   mega-checker-app-web.zip           web build (upload to a static host)
+#   SHA256SUMS.txt                     checksums of the files above
 #
 # Runs when a release is published (gh release create vX.Y.Z …, or the
-# Releases page), or by hand: Actions → Release builds → Run workflow → tag.
+# Releases page), or by hand: Actions → Release builds → Run workflow → tag
+# (and optionally a newer branch / commit to build, e.g. to fix packaging).
 name: Release builds
 
 on:
@@ -17,6 +20,10 @@ on:
       tag:
         description: Existing release tag to build and attach files to (e.g. v1.0.0)
         required: true
+      ref:
+        description: Branch or commit to build instead of the tag (optional)
+        required: false
+        default: ''
 
 permissions:
   contents: write # upload release assets
@@ -27,6 +34,7 @@ concurrency:
 
 env:
   TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  REF: ${{ inputs.ref || github.event.release.tag_name || inputs.tag }}
   FLUTTER_VERSION: 3.44.6
   GH_TOKEN: ${{ github.token }}
 
@@ -38,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -56,7 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -79,7 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -106,7 +114,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ env.REF }}
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -114,16 +122,16 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build macos --release
-      - name: Package .zip and .dmg (drag-to-Applications)
+      - name: Package the installer .dmg (drag-to-Applications window)
         run: |
-          APP="build/macos/Build/Products/Release/mega-checker-app.app"
-          test -d "$APP"
-          mkdir -p dist dmg
-          ditto -c -k --keepParent "$APP" dist/mega-checker-app-macos.zip
-          cp -R "$APP" dmg/
-          ln -s /Applications dmg/Applications
-          hdiutil create -volname "mega-checker-app" -srcfolder dmg -ov -format UDZO dist/mega-checker-app-macos.dmg
-      - run: gh release upload "$TAG" dist/mega-checker-app-macos.dmg dist/mega-checker-app-macos.zip --clobber --repo "$GITHUB_REPOSITORY"
+          # hdiutil is sometimes "busy" on CI runners; try a few times.
+          for attempt in 1 2 3; do
+            tool/make_dmg.sh build/macos/Build/Products/Release/mega-checker-app.app \
+              dist/mega-checker-app-macos.dmg && exit 0
+            echo "make_dmg failed (attempt $attempt), retrying…"; sleep 10
+          done
+          exit 1
+      - run: gh release upload "$TAG" dist/mega-checker-app-macos.dmg --clobber --repo "$GITHUB_REPOSITORY"
 
   checksums:
     name: Checksums

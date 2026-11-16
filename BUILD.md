@@ -58,15 +58,22 @@ flutter pub get
 ```sh
 ./build.sh              # build only
 ./build.sh --install    # build, then copy to /Applications
+./build.sh --dmg        # build, then make the installer .dmg
 ```
 
 Output: `build/macos/Build/Products/Release/mega-checker-app.app`, for Apple
-Silicon (M1–M4). To share it as one file:
+Silicon (M1–M4).
 
-```sh
-cd build/macos/Build/Products/Release
-ditto -c -k --keepParent mega-checker-app.app mega-checker-app.zip
-```
+**The installer** (`./build.sh --dmg`, or `tool/make_dmg.sh` for an app you
+already built) writes `dist/mega-checker-app-macos.dmg`, the same file the
+releases ship. Opening it shows the app, a red **Drag to install** arrow and
+the Applications folder, plus a first-launch tip. It needs `python3`; the
+layout tool ([dmgbuild](https://pypi.org/project/dmgbuild/)) is installed
+into a temporary venv from `macos/packaging/requirements-dmg.txt` (pinned,
+with hashes). The artwork is `macos/packaging/dmg-background.png` (+ `@2x`),
+drawn by `swift tool/generate_dmg_background.swift`; the icon positions are
+in `macos/packaging/dmg_settings.py`. The background is light on purpose:
+with a background picture, Finder always draws the icon names in black.
 
 On **another** Mac, macOS blocks the app the first time (it isn't notarized):
 try to open it, then **System Settings → Privacy & Security → Open Anyway**.
